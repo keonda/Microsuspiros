@@ -68,7 +68,7 @@ Open `http://localhost:3000`.
 ```bash
 npm run dev              # Start Next.js in development
 npm run build            # Generate Prisma client and build Next.js
-npm run start            # Start the production server
+npm run start            # Apply migrations and start the production server
 npm run lint             # Run Next lint
 npm run prisma:generate  # Generate Prisma client
 npm run prisma:migrate   # Create/apply local Prisma migrations
@@ -86,33 +86,37 @@ The Prisma schema includes:
 - `Asset`
 - `AIGenerationLog`
 
-Run `npm run prisma:migrate` during local development. In production, Coolify can run the build command and a deploy command that applies migrations before starting the app.
+Run `npm run prisma:migrate` during local development. In production, the `start` script applies pending migrations with `prisma migrate deploy` before starting Next.js.
 
 ## Coolify Deployment Notes
 
 1. Create a PostgreSQL service in Coolify.
 2. Create a new app from this repository.
 3. Add the production `DATABASE_URL` environment variable from the Coolify PostgreSQL service.
-4. Use Node.js build mode.
-5. Build command:
+4. Make sure `DATABASE_URL` is enabled for both build and runtime in Coolify.
+5. Use the Nixpacks build pack.
+6. Set the branch to `codex/microsuspiros-admin-panel`.
+7. Set the app port to `3000`.
+8. Leave `Is it a static site?` disabled.
+9. Build command:
 
 ```bash
-npm install && npm run build
+npm ci && npm run build
 ```
 
-6. Start command:
+10. Start command:
 
 ```bash
-npx prisma migrate deploy && npm run start
+npm run start
 ```
 
-7. Optional first-time seed command:
+11. Optional first-time seed command:
 
 ```bash
 npm run prisma:seed
 ```
 
-The `postinstall` script runs `prisma generate`, and the `build` script also runs it to keep Prisma ready in production builds.
+The app pins Node 22 because Next.js 16 requires Node 20.9 or newer and Nixpacks defaults to Node 18 when no version is specified. The production start script runs `prisma migrate deploy` before `next start`, so the database schema is applied when the container starts.
 
 ## Future Groq Integration
 
