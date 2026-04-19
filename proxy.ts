@@ -7,6 +7,10 @@ export async function proxy(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
+  if (pathname === "/api/auth/status") {
+    return NextResponse.next();
+  }
+
   const isLogin = pathname === "/login";
   const isAuthed = request.cookies.get(AUTH_COOKIE)?.value === (await adminSessionToken());
 
