@@ -8,13 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{
-    error?: string;
-    submittedUser?: string;
-    submittedUserLength?: string;
-    submittedPasswordLength?: string;
-    submittedPasswordHash8?: string;
-  }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   if (!isAuthConfigured()) {
     redirect("/");
@@ -31,10 +25,6 @@ export default async function LoginPage({
         {params.error ? (
           <div className="mt-4 rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">
             <p>Those credentials did not match.</p>
-            <p className="mt-2 text-xs text-red-100/75">
-              Submitted user: {params.submittedUser || "(blank)"} · user length: {params.submittedUserLength || "0"} · password length:{" "}
-              {params.submittedPasswordLength || "0"} · password check: {params.submittedPasswordHash8 || "(blank)"}
-            </p>
           </div>
         ) : null}
         <form action="/api/auth/login" method="post" className="mt-6 space-y-4">
