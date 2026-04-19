@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SongStatus {
+  DRAFT
+  IN_PROGRESS
+  READY
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PlaylistType {
+  COMPILATION
+  SHORTS_SET
+  MOOD_SET
+  CUSTOM
+}
+
+enum AssetType {
+  COVER_ART
+  AUDIO_FULL
+  AUDIO_SHORT
+  VIDEO_SHORT
+  VIDEO_FULL
+  OTHER
+}
+
+enum AIGenerationKind {
+  YOUTUBE_TITLE
+  YOUTUBE_DESCRIPTION
+  SHORT_VERSION
+  EXCERPT
+  TAGS
+  NOTES
+  OTHER
+}
+
+model Song {
+  id                 String            @id @default(cuid())
+  title              String
+  slug               String            @unique
+  status             SongStatus        @default(DRAFT)
+  mood               String?
+  theme              String?
+  language           String            @default("Spanish")
+  fullLyrics         String?
+  shortVersion       String?
+  hookText           String?
+  youtubeTitle       String?
+  youtubeDescription String?
+  websiteExcerpt     String?
+  notes              String?
+  hasCoverArt        Boolean           @default(false)
+  hasFullVersion     Boolean           @default(false)
+  hasShortVersion    Boolean           @default(false)
+  publishedYoutube   Boolean           @default(false)
+  publishedWebsite   Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  tags               Tag[]
+  playlistSongs      PlaylistSong[]
+  assets             Asset[]
+  aiGenerationLogs   AIGenerationLog[]
+
+  @@index([status])
+  @@index([updatedAt])
+  @@index([mood])
+  @@index([theme])
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+  songs Song[]
+}
+
+model Playlist {
+  id            String         @id @default(cuid())
+  title         String
+  slug          String         @unique
+  description   String?
+  type          PlaylistType   @default(CUSTOM)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  playlistSongs PlaylistSong[]
+
+  @@index([type])
+  @@index([updatedAt])
+}
+
+model PlaylistSong {
+  playlistId String
+  songId     String
+  position   Int      @default(0)
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, songId])
+  @@index([songId])
+  @@index([playlistId, position])
+}
+
+model Asset {
+  id        String    @id @default(cuid())
+  songId    String
+  type      AssetType @default(OTHER)
+  title     String
+  url       String?
+  notes     String?
+  createdAt DateTime  @default(now())
+  song      Song      @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@index([songId])
+  @@index([type])
+}
+
+model AIGenerationLog {
+  id        String           @id @default(cuid())
+  songId    String?
+  kind      AIGenerationKind @default(OTHER)
+  prompt    String
+  result    String
+  createdAt DateTime         @default(now())
+  song      Song?            @relation(fields: [songId], references: [id], onDelete: SetNull)
+
+  @@index([songId])
+  @@index([kind])
+  @@index([createdAt])
+}
