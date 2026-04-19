@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE, adminPassword, adminSessionSecret, adminUsername, isAuthConfigured } from "@/lib/auth";
+import { AUTH_COOKIE, adminPassword, adminSessionSecret, adminUsername, isAuthConfigured, secureAdminCookie } from "@/lib/auth";
 
 export async function loginAction(formData: FormData) {
   if (!isAuthConfigured()) {
@@ -20,7 +20,7 @@ export async function loginAction(formData: FormData) {
   cookieStore.set(AUTH_COOKIE, adminSessionSecret(), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureAdminCookie(),
     path: "/",
     maxAge: 60 * 60 * 24 * 7
   });

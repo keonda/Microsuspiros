@@ -137,6 +137,7 @@ The app includes a simple env-controlled login gate. It stays disabled until all
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="use-a-strong-password"
 ADMIN_SESSION_SECRET="use-a-long-random-string"
+ADMIN_COOKIE_SECURE="false"
 ```
 
-Set those in Coolify to protect the admin panel. For local open testing, leave them unset. This is intentionally lightweight so a full auth provider can be added later without rewriting the admin pages.
+Set those in Coolify to protect the admin panel. For local open testing, leave the first three unset. If the site is available through HTTPS only, set `ADMIN_COOKIE_SECURE` to `true`; if you are testing through plain HTTP, keep it `false` so the browser will accept the login cookie. This is intentionally lightweight so a full auth provider can be added later without rewriting the admin pages.

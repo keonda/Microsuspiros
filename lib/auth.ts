@@ -1,19 +1,28 @@
 export const AUTH_COOKIE = "microsuspiros_admin";
 
+function cleanEnv(value: string | undefined) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.replace(/^['"]|['"]$/g, "");
+}
+
 export function isAuthConfigured() {
-  return Boolean(process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD && process.env.ADMIN_SESSION_SECRET);
+  return Boolean(adminUsername() && adminPassword() && adminSessionSecret());
 }
 
 export function adminUsername() {
-  return process.env.ADMIN_USERNAME ?? "";
+  return cleanEnv(process.env.ADMIN_USERNAME);
 }
 
 export function adminPassword() {
-  return process.env.ADMIN_PASSWORD ?? "";
+  return cleanEnv(process.env.ADMIN_PASSWORD);
 }
 
 export function adminSessionSecret() {
-  return process.env.ADMIN_SESSION_SECRET ?? "";
+  return cleanEnv(process.env.ADMIN_SESSION_SECRET);
+}
+
+export function secureAdminCookie() {
+  return cleanEnv(process.env.ADMIN_COOKIE_SECURE).toLowerCase() === "true";
 }
 
 export function authEnvHint() {
