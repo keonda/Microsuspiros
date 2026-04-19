@@ -46,12 +46,16 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <>
-      <PageHeading title={song.title} subtitle={`Last updated ${dateLabel(song.updatedAt)} - slug ${song.slug}`} />
+      <PageHeading
+        title={song.title}
+        subtitle={`Last updated ${dateLabel(song.updatedAt)} - slug ${song.slug}`}
+        action={<a href="#ai-studio" className="rounded-lg bg-rose px-4 py-2 text-sm font-semibold text-ink hover:bg-rose/90">AI Studio</a>}
+      />
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <Card>
+        <Card className="order-2 xl:order-1">
           <SongForm song={song} playlists={playlists} action={updateSong.bind(null, song.id)} submitLabel="Save changes" />
         </Card>
-        <div className="space-y-6">
+        <div className="order-1 space-y-6 xl:order-2">
           <Card>
             <CardTitle title="Readiness Checklist" eyebrow={readiness.fullyPublishable ? "fully publishable" : "needs attention"} />
             <div className="space-y-2">
@@ -72,7 +76,7 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
             {readiness.missing.length ? <div className="mt-3 flex flex-wrap gap-2">{readiness.missing.map((item) => <Pill key={item}>{item}</Pill>)}</div> : null}
           </Card>
 
-          <Card>
+          <Card id="ai-studio">
             <CardTitle title="AI Studio" eyebrow="mock now, Groq-ready" />
             <p className="mb-4 text-sm leading-6 text-mist/65">Generate creator-ready drafts, review them below, then apply only the ones that feel right.</p>
             <form action={generateMetadata.bind(null, song.id)}>
