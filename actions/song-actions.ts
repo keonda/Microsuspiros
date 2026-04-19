@@ -3,7 +3,7 @@
 import { AIGenerationKind, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { generateShortVersion, generateWebsiteExcerpt, generateYoutubeDescription, generateYoutubeTitle } from "@/lib/ai";
+import { generateAI } from "@/lib/ai";
 import { prisma } from "@/lib/prisma";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import { csvTags, formBool, formString, formStringArray, songSchema } from "@/lib/validation";
@@ -121,6 +121,8 @@ export async function duplicateSong(id: string) {
       hasCoverArt: song.hasCoverArt,
       hasFullVersion: song.hasFullVersion,
       hasShortVersion: song.hasShortVersion,
+      publishedYoutube: false,
+      publishedWebsite: false,
       tags: { connect: song.tags.map((tag) => ({ id: tag.id })) }
     }
   });
@@ -133,38 +135,157 @@ export async function markSongReady(id: string) {
   await prisma.song.update({ where: { id }, data: { status: "READY" } });
   revalidatePath("/");
   revalidatePath("/songs");
+  revalidatePath(`/songs/${id}`);
 }
 
-export async function generateMetadata(id: string) {
-  const song = await prisma.song.findUniqueOrThrow({ where: { id } });
-  const [youtubeTitle, youtubeDescription, shortVersion, websiteExcerpt] = await Promise.all([
-    generateYoutubeTitle(song),
-    generateYoutubeDescription(song),
-    generateShortVersion(song),
-    generateWebsiteExcerpt(song)
-  ]);
+const aiFieldMap: Partial<Record<AIGenerationKind, keyof Prisma.SongUpdateInput>> = {
+  YOUTUBE_TITLE: "youtubeTitle",
+  YOUTUBE_DESCRIPTION: "youtubeDescription",
+  SHORT_VERSION: "shortVersion",
+  EXCERPT: "websiteExcerpt",
+  HOOK_TEXT: "hookText"
+};
 
-  await prisma.song.update({
-    where: { id },
-    data: {
-      youtubeTitle,
-      youtubeDescription,
-      shortVersion,
-      websiteExcerpt,
-      hasShortVersion: Boolean(shortVersion)
-    }
-  });
+const metadataKinds = [
+  AIGenerationKind.YOUTUBE_TITLE,
+  AIGenerationKind.YOUTUBE_DESCRIPTION,
+  AIGenerationKind.SHORT_VERSION,
+  AIGenerationKind.EXCERPT,
+  AIGenerationKind.HOOK_TEXT,
+  AIGenerationKind.TAGS
+];
+
+export async function generateSongAI(id: string, kind: AIGenerationKind) {
+  const song = await prisma.song.findUniqueOrThrow({ where: { id } });
+  const generated = await generateAI(kind, song);
 
   await prisma.aIGenerationLog.create({
     data: {
       songId: id,
-      kind: AIGenerationKind.OTHER,
-      prompt: "Generate mock metadata for YouTube, website excerpt, and suspiro short version.",
-      result: JSON.stringify({ youtubeTitle, youtubeDescription, shortVersion, websiteExcerpt } satisfies Prisma.JsonObject)
+      kind,
+      provider: generated.provider,
+      prompt: generated.prompt,
+      result: generated.result
     }
   });
 
   revalidatePath(`/songs/${id}`);
+  redirect(`/songs/${id}`);
+}
+
+export async function generateMetadata(id: string) {
+  const song = await prisma.song.findUniqueOrThrow({ where: { id } });
+  const generations = await Promise.all(metadataKinds.map((kind) => generateAI(kind, song)));
+
+  await prisma.aIGenerationLog.createMany({
+    data: generations.map((generation) => ({
+      songId: id,
+      kind: generation.kind,
+      provider: generation.provider,
+      prompt: generation.prompt,
+      result: generation.result
+    }))
+  });
+
+  const updateData: Prisma.SongUpdateInput = {};
+  for (const generation of generations) {
+    const field = aiFieldMap[generation.kind];
+    if (field) {
+      updateData[field] = generation.result as never;
+    }
+  }
+  if (updateData.shortVersion) {
+    updateData.hasShortVersion = true;
+  }
+
+  await prisma.song.update({ where: { id }, data: updateData });
+
+  revalidatePath("/");
+  revalidatePath("/songs");
+  revalidatePath(`/songs/${id}`);
   revalidatePath("/workflow");
   redirect(`/songs/${id}`);
+}
+
+export async function applyAIGeneration(logId: string) {
+  const log = await prisma.aIGenerationLog.findUniqueOrThrow({ where: { id: logId } });
+  if (!log.songId) return;
+
+  const field = aiFieldMap[log.kind];
+  const data: Prisma.SongUpdateInput = {};
+
+  if (field) {
+    data[field] = log.result as never;
+  }
+
+  if (log.kind === AIGenerationKind.SHORT_VERSION) {
+    data.hasShortVersion = true;
+  }
+
+  if (log.kind === AIGenerationKind.TAGS) {
+    const names = csvTags(log.result);
+    data.tags = { connectOrCreate: await tagConnections(names) };
+  }
+
+  const operations: Prisma.PrismaPromise<unknown>[] = [prisma.aIGenerationLog.update({ where: { id: log.id }, data: { accepted: true } })];
+  if (Object.keys(data).length) {
+    operations.unshift(prisma.song.update({ where: { id: log.songId }, data }));
+  }
+
+  await prisma.$transaction(operations);
+
+  revalidatePath("/");
+  revalidatePath("/songs");
+  revalidatePath(`/songs/${log.songId}`);
+  revalidatePath("/workflow");
+  redirect(`/songs/${log.songId}`);
+}
+
+export async function bulkSongAction(formData: FormData) {
+  const ids = formStringArray(formData, "songIds");
+  const action = formString(formData, "bulkAction");
+  const tag = formString(formData, "bulkTag");
+
+  if (!ids.length) {
+    redirect("/songs");
+  }
+
+  if (action === "READY" || action === "ARCHIVED") {
+    await prisma.song.updateMany({ where: { id: { in: ids } }, data: { status: action } });
+  }
+
+  if (action === "PUBLISHED_YOUTUBE") {
+    await prisma.song.updateMany({ where: { id: { in: ids } }, data: { publishedYoutube: true } });
+  }
+
+  if (action === "PUBLISHED_WEBSITE") {
+    await prisma.song.updateMany({ where: { id: { in: ids } }, data: { publishedWebsite: true } });
+  }
+
+  if (action === "ADD_TAG" && tag) {
+    const connectOrCreate = await tagConnections([tag]);
+    await prisma.$transaction(ids.map((id) => prisma.song.update({ where: { id }, data: { tags: { connectOrCreate } } })));
+  }
+
+  if (action === "GENERATE_METADATA") {
+    for (const id of ids) {
+      const song = await prisma.song.findUnique({ where: { id } });
+      if (!song) continue;
+      const generations = await Promise.all(metadataKinds.slice(0, 4).map((kind) => generateAI(kind, song)));
+      await prisma.aIGenerationLog.createMany({
+        data: generations.map((generation) => ({
+          songId: id,
+          kind: generation.kind,
+          provider: generation.provider,
+          prompt: generation.prompt,
+          result: generation.result
+        }))
+      });
+    }
+  }
+
+  revalidatePath("/");
+  revalidatePath("/songs");
+  revalidatePath("/workflow");
+  redirect("/songs");
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SongStatus } from "@prisma/client";
+import { bulkSongAction } from "@/actions/song-actions";
 import { PageHeading } from "@/components/page-heading";
 import { StatusBadge, Pill } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -48,39 +49,55 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
 
       <Card>
         {songs.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] text-left text-sm">
-              <thead className="text-xs uppercase tracking-[0.12em] text-mist/45">
-                <tr className="border-b border-white/10">
-                  <th className="py-3 pr-4">Song</th>
-                  <th className="py-3 pr-4">Status</th>
-                  <th className="py-3 pr-4">Mood</th>
-                  <th className="py-3 pr-4">Theme</th>
-                  <th className="py-3 pr-4">Assets</th>
-                  <th className="py-3 pr-4">Published</th>
-                  <th className="py-3">Updated</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10">
-                {songs.map((song) => (
-                  <tr key={song.id}>
-                    <td className="py-4 pr-4">
-                      <Link href={`/songs/${song.id}`} className="font-medium text-white hover:text-rose">{song.title}</Link>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {song.tags.map((tag) => <Pill key={tag.id}>{tag.name}</Pill>)}
-                      </div>
-                    </td>
-                    <td className="py-4 pr-4"><StatusBadge status={song.status} /></td>
-                    <td className="py-4 pr-4 text-mist/70">{song.mood || "-"}</td>
-                    <td className="py-4 pr-4 text-mist/70">{song.theme || "-"}</td>
-                    <td className="py-4 pr-4 text-mist/70">Cover {yesNo(song.hasCoverArt)} · Short {yesNo(song.hasShortVersion)}</td>
-                    <td className="py-4 pr-4 text-mist/70">YT {yesNo(song.publishedYoutube)} · Web {yesNo(song.publishedWebsite)}</td>
-                    <td className="py-4 text-mist/60">{dateLabel(song.updatedAt)}</td>
+          <form action={bulkSongAction}>
+            <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-ink/35 p-3 md:grid-cols-[1fr_1fr_auto]">
+              <select name="bulkAction" className={inputClass()} defaultValue="READY">
+                <option value="READY">Mark READY</option>
+                <option value="ARCHIVED">Mark ARCHIVED</option>
+                <option value="PUBLISHED_YOUTUBE">Mark published on YouTube</option>
+                <option value="PUBLISHED_WEBSITE">Mark published on website</option>
+                <option value="GENERATE_METADATA">Generate metadata drafts</option>
+                <option value="ADD_TAG">Add tag</option>
+              </select>
+              <input name="bulkTag" className={inputClass()} placeholder="Optional tag for Add tag" />
+              <button className="rounded-lg bg-rose px-4 py-2 text-sm font-semibold text-ink">Apply to selected</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead className="text-xs uppercase tracking-[0.12em] text-mist/45">
+                  <tr className="border-b border-white/10">
+                    <th className="py-3 pr-4">Select</th>
+                    <th className="py-3 pr-4">Song</th>
+                    <th className="py-3 pr-4">Status</th>
+                    <th className="py-3 pr-4">Mood</th>
+                    <th className="py-3 pr-4">Theme</th>
+                    <th className="py-3 pr-4">Assets</th>
+                    <th className="py-3 pr-4">Published</th>
+                    <th className="py-3">Updated</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {songs.map((song) => (
+                    <tr key={song.id}>
+                      <td className="py-4 pr-4"><input type="checkbox" name="songIds" value={song.id} /></td>
+                      <td className="py-4 pr-4">
+                        <Link href={`/songs/${song.id}`} className="font-medium text-white hover:text-rose">{song.title}</Link>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {song.tags.map((tag) => <Pill key={tag.id}>{tag.name}</Pill>)}
+                        </div>
+                      </td>
+                      <td className="py-4 pr-4"><StatusBadge status={song.status} /></td>
+                      <td className="py-4 pr-4 text-mist/70">{song.mood || "-"}</td>
+                      <td className="py-4 pr-4 text-mist/70">{song.theme || "-"}</td>
+                      <td className="py-4 pr-4 text-mist/70">Cover {yesNo(song.hasCoverArt)} - Short {yesNo(song.hasShortVersion)}</td>
+                      <td className="py-4 pr-4 text-mist/70">YT {yesNo(song.publishedYoutube)} - Web {yesNo(song.publishedWebsite)}</td>
+                      <td className="py-4 text-mist/60">{dateLabel(song.updatedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </form>
         ) : (
           <p className="rounded-lg bg-white/5 p-5 text-sm text-mist/65">No songs match this view. The silence is clean, at least.</p>
         )}

@@ -2,6 +2,7 @@ import type { Playlist, PlaylistSong, Song, Tag } from "@prisma/client";
 import { SongStatus } from "@prisma/client";
 import { Checkbox, Field, inputClass } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { CardTitle } from "@/components/ui/card";
 
 type SongWithRelations = Song & { tags: Tag[]; playlistSongs: PlaylistSong[] };
 
@@ -21,6 +22,7 @@ export function SongForm({
 
   return (
     <form action={action} className="space-y-6">
+      <CardTitle title="Basic Info" />
       <div className="grid gap-5 lg:grid-cols-2">
         <Field label="Title">
           <input name="title" required defaultValue={song?.title} className={inputClass()} placeholder="Donde duerme tu nombre" />
@@ -51,6 +53,7 @@ export function SongForm({
         </Field>
       </div>
 
+      <CardTitle title="Content" />
       <div className="grid gap-5 lg:grid-cols-2">
         <Field label="Full lyrics">
           <textarea name="fullLyrics" defaultValue={song?.fullLyrics ?? ""} rows={12} className={inputClass()} />
@@ -60,6 +63,7 @@ export function SongForm({
         </Field>
       </div>
 
+      <CardTitle title="Metadata" />
       <div className="grid gap-5 lg:grid-cols-2">
         <Field label="Hook text">
           <textarea name="hookText" defaultValue={song?.hookText ?? ""} rows={4} className={inputClass()} />
@@ -75,10 +79,12 @@ export function SongForm({
         </Field>
       </div>
 
+      <CardTitle title="Notes" />
       <Field label="Notes">
         <textarea name="notes" defaultValue={song?.notes ?? ""} rows={5} className={inputClass()} />
       </Field>
 
+      <CardTitle title="Publishing Status" />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Checkbox name="hasFullVersion" label="Full version" defaultChecked={song?.hasFullVersion} />
         <Checkbox name="hasShortVersion" label="Short version" defaultChecked={song?.hasShortVersion} />

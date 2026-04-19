@@ -120,14 +120,39 @@ The app pins Node 22 because Next.js 16 requires Node 20.9 or newer and Nixpacks
 
 ## Future Groq Integration
 
-The mock AI helper lives in `lib/ai.ts` with these functions:
+The AI helper lives in `lib/ai/` with these functions:
 
 - `generateYoutubeTitle(song)`
 - `generateYoutubeDescription(song)`
 - `generateShortVersion(song)`
 - `generateWebsiteExcerpt(song)`
+- `generateHookText(song)`
+- `suggestTags(song)`
 
-To add Groq later, replace the mock string builders with a Groq client call, keep the same function signatures, and continue storing outputs in `AIGenerationLog`.
+Mock mode is the default and works without external services:
+
+```bash
+AI_PROVIDER="mock"
+```
+
+To enable Groq, configure:
+
+```bash
+AI_PROVIDER="groq"
+GROQ_API_KEY="your-groq-key"
+GROQ_MODEL="llama-3.1-8b-instant"
+```
+
+If Groq is unavailable or misconfigured, the app falls back to mock generation instead of breaking the creator workflow. Generated outputs are stored in `AIGenerationLog` with provider, prompt, result, accepted state, and timestamp.
+
+## Phase 2 Migration
+
+Phase 2 adds provider and accepted tracking to AI generation logs, plus a new `HOOK_TEXT` generation kind. After pulling this version, run:
+
+```bash
+npm run prisma:generate
+npx prisma migrate deploy
+```
 
 ## Auth
 

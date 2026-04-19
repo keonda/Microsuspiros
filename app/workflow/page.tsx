@@ -1,48 +1,56 @@
 import Link from "next/link";
-import { SongStatus } from "@prisma/client";
 import { PageHeading } from "@/components/page-heading";
-import { StatusBadge } from "@/components/ui/badge";
+import { StatusBadge, Pill } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
+import { songReadiness } from "@/lib/song-readiness";
 
 export const dynamic = "force-dynamic";
 
 export default async function WorkflowPage() {
-  const [noCover, noShort, notYoutube, ready] = await Promise.all([
-    prisma.song.findMany({ where: { hasCoverArt: false }, orderBy: { updatedAt: "desc" }, take: 12 }),
-    prisma.song.findMany({ where: { hasShortVersion: false }, orderBy: { updatedAt: "desc" }, take: 12 }),
-    prisma.song.findMany({ where: { publishedYoutube: false }, orderBy: { updatedAt: "desc" }, take: 12 }),
-    prisma.song.findMany({ where: { status: SongStatus.READY }, orderBy: { updatedAt: "desc" }, take: 12 })
-  ]);
+  const songs = await prisma.song.findMany({ orderBy: { updatedAt: "desc" }, take: 80 });
+  const reports = songs.map((song) => ({ song, readiness: songReadiness(song) }));
 
   return (
     <>
       <PageHeading title="Workflow" subtitle="Publishing readiness, missing pieces, and the songs closest to release." />
       <div className="grid gap-6 xl:grid-cols-2">
-        <WorkflowCard title="Missing Cover Art" songs={noCover} empty="Every song in this view has cover art." />
-        <WorkflowCard title="Missing Short Version" songs={noShort} empty="All songs have suspiro versions." />
-        <WorkflowCard title="Not On YouTube" songs={notYoutube} empty="Everything here has reached YouTube." />
-        <WorkflowCard title="Ready To Publish" songs={ready} empty="No songs are marked ready yet." />
+        <WorkflowCard title="Missing Lyrics" items={reports.filter((item) => !item.readiness.hasLyrics)} empty="Every song has lyrics or a full version." />
+        <WorkflowCard title="Missing Short Version" items={reports.filter((item) => !item.readiness.hasShortVersion)} empty="All songs have suspiro versions." />
+        <WorkflowCard title="Missing YouTube Metadata" items={reports.filter((item) => !item.readiness.hasYoutubeTitle || !item.readiness.hasYoutubeDescription)} empty="All songs have YouTube metadata." />
+        <WorkflowCard title="Missing Website Excerpt" items={reports.filter((item) => !item.readiness.hasExcerpt)} empty="All songs have website excerpts." />
+        <WorkflowCard title="Missing Cover Art" items={reports.filter((item) => !item.readiness.hasCoverArt)} empty="Every song in this view has cover art." />
+        <WorkflowCard title="Ready For YouTube" items={reports.filter((item) => item.readiness.readyForYoutube)} empty="No songs are ready for YouTube yet." />
+        <WorkflowCard title="Ready For Website" items={reports.filter((item) => item.readiness.readyForWebsite)} empty="No songs are ready for the website yet." />
+        <WorkflowCard title="Fully Publishable" items={reports.filter((item) => item.readiness.fullyPublishable)} empty="No songs are fully publishable yet." />
       </div>
     </>
   );
 }
 
-type WorkflowSong = Awaited<ReturnType<typeof prisma.song.findMany>>[number];
+type WorkflowItem = {
+  song: Awaited<ReturnType<typeof prisma.song.findMany>>[number];
+  readiness: ReturnType<typeof songReadiness>;
+};
 
-function WorkflowCard({ title, songs, empty }: { title: string; songs: WorkflowSong[]; empty: string }) {
+function WorkflowCard({ title, items, empty }: { title: string; items: WorkflowItem[]; empty: string }) {
   return (
     <Card>
-      <CardTitle title={title} />
-      {songs.length ? (
+      <CardTitle title={title} eyebrow={`${items.length} songs`} />
+      {items.length ? (
         <div className="divide-y divide-white/10">
-          {songs.map((song) => (
-            <Link key={song.id} href={`/songs/${song.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div>
-                <p className="font-medium text-white">{song.title}</p>
-                <p className="text-sm text-mist/55">{song.mood || "No mood"} · {song.theme || "No theme"}</p>
+          {items.slice(0, 12).map(({ song, readiness }) => (
+            <Link key={song.id} href={`/songs/${song.id}`} className="block py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-white">{song.title}</p>
+                  <p className="text-sm text-mist/55">{song.mood || "No mood"} - {song.theme || "No theme"}</p>
+                </div>
+                <StatusBadge status={song.status} />
               </div>
-              <StatusBadge status={song.status} />
+              {readiness.missing.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">{readiness.missing.slice(0, 4).map((item) => <Pill key={item}>{item}</Pill>)}</div>
+              ) : null}
             </Link>
           ))}
         </div>

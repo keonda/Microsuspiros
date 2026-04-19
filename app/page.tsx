@@ -6,21 +6,30 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { dateLabel } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { songReadiness } from "@/lib/song-readiness";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [totalSongs, drafts, ready, published, missingCover, missingShort, playlistsCount, recentSongs, recentUpdated] = await Promise.all([
-    prisma.song.count(),
+  const [allSongs, drafts, ready, published, playlistsCount, recentSongs, recentUpdated, aiDrafts] = await Promise.all([
+    prisma.song.findMany(),
     prisma.song.count({ where: { status: SongStatus.DRAFT } }),
     prisma.song.count({ where: { status: SongStatus.READY } }),
     prisma.song.count({ where: { status: SongStatus.PUBLISHED } }),
-    prisma.song.count({ where: { hasCoverArt: false } }),
-    prisma.song.count({ where: { hasShortVersion: false } }),
     prisma.playlist.count(),
     prisma.song.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { tags: true } }),
-    prisma.song.findMany({ take: 5, orderBy: { updatedAt: "desc" }, include: { tags: true } })
+    prisma.song.findMany({ take: 5, orderBy: { updatedAt: "desc" }, include: { tags: true } }),
+    prisma.aIGenerationLog.count()
   ]);
+  const reports = allSongs.map((song) => ({ song, readiness: songReadiness(song) }));
+  const totalSongs = allSongs.length;
+  const missingCover = reports.filter((item) => !item.readiness.hasCoverArt).length;
+  const missingShort = reports.filter((item) => !item.readiness.hasShortVersion).length;
+  const readyYoutube = reports.filter((item) => item.readiness.readyForYoutube).length;
+  const readyWebsite = reports.filter((item) => item.readiness.readyForWebsite).length;
+  const fullyPublishable = reports.filter((item) => item.readiness.fullyPublishable).length;
+  const missingMetadata = reports.filter((item) => !item.readiness.hasYoutubeTitle || !item.readiness.hasYoutubeDescription || !item.readiness.hasExcerpt).length;
+  const staleDrafts = allSongs.filter((song) => song.status === SongStatus.DRAFT).sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime()).slice(0, 5);
 
   const stats = [
     { label: "Total songs", value: totalSongs, icon: Music2 },
@@ -29,6 +38,11 @@ export default async function DashboardPage() {
     { label: "Published", value: published, icon: ArrowRight },
     { label: "Missing cover", value: missingCover, icon: FileWarning },
     { label: "Missing short", value: missingShort, icon: FileWarning },
+    { label: "Ready for YouTube", value: readyYoutube, icon: Radio },
+    { label: "Ready for website", value: readyWebsite, icon: ArrowRight },
+    { label: "Fully publishable", value: fullyPublishable, icon: Sparkles },
+    { label: "Missing metadata", value: missingMetadata, icon: FileWarning },
+    { label: "AI drafts", value: aiDrafts, icon: Sparkles },
     { label: "Playlists", value: playlistsCount, icon: ListPlus }
   ];
 
@@ -79,6 +93,15 @@ export default async function DashboardPage() {
         <CardTitle title="Recently Updated" eyebrow="Still breathing" />
         <SongList songs={recentUpdated} />
       </Card>
+
+      <Card className="mt-6">
+        <CardTitle title="Needs Attention" eyebrow="quiet blockers" />
+        <div className="grid gap-4 md:grid-cols-3">
+          <AttentionList title="Missing Short Version" songs={reports.filter((item) => !item.readiness.hasShortVersion).map((item) => item.song).slice(0, 5)} />
+          <AttentionList title="Missing Cover Art" songs={reports.filter((item) => !item.readiness.hasCoverArt).map((item) => item.song).slice(0, 5)} />
+          <AttentionList title="Stale Drafts" songs={staleDrafts} />
+        </div>
+      </Card>
     </>
   );
 }
@@ -98,6 +121,25 @@ function SongList({ songs }: { songs: DashboardSong[] }) {
           <StatusBadge status={song.status} />
         </Link>
       ))}
+    </div>
+  );
+}
+
+function AttentionList({ title, songs }: { title: string; songs: DashboardSong[] }) {
+  return (
+    <div className="rounded-lg bg-white/5 p-4">
+      <p className="mb-2 text-sm font-semibold text-white">{title}</p>
+      {songs.length ? (
+        <div className="space-y-2">
+          {songs.map((song) => (
+            <Link key={song.id} href={`/songs/${song.id}`} className="block text-sm text-mist/70 hover:text-rose">
+              {song.title}
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-mist/50">Nothing waiting here.</p>
+      )}
     </div>
   );
 }

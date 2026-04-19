@@ -37,6 +37,7 @@ enum AIGenerationKind {
   SHORT_VERSION
   EXCERPT
   TAGS
+  HOOK_TEXT
   NOTES
   OTHER
 }
@@ -125,8 +126,10 @@ model AIGenerationLog {
   id        String           @id @default(cuid())
   songId    String?
   kind      AIGenerationKind @default(OTHER)
+  provider  String           @default("mock")
   prompt    String
   result    String
+  accepted  Boolean          @default(false)
   createdAt DateTime         @default(now())
   song      Song?            @relation(fields: [songId], references: [id], onDelete: SetNull)
 
