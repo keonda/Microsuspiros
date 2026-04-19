@@ -41,14 +41,15 @@ async function tagConnections(names: string[]) {
 
 export async function createSong(formData: FormData) {
   const input = songInput(formData);
+  const { tags, playlistIds, ...songData } = input;
   const slug = await uniqueSlug(input.title, async (candidate) => Boolean(await prisma.song.findUnique({ where: { slug: candidate } })));
   const song = await prisma.song.create({
     data: {
-      ...input,
+      ...songData,
       slug,
-      tags: { connectOrCreate: await tagConnections(input.tags) },
+      tags: { connectOrCreate: await tagConnections(tags) },
       playlistSongs: {
-        create: input.playlistIds.map((playlistId, index) => ({
+        create: playlistIds.map((playlistId, index) => ({
           playlistId,
           position: index + 1
         }))
@@ -62,6 +63,7 @@ export async function createSong(formData: FormData) {
 
 export async function updateSong(id: string, formData: FormData) {
   const input = songInput(formData);
+  const { tags, playlistIds, ...songData } = input;
   const current = await prisma.song.findUniqueOrThrow({ where: { id }, select: { slug: true, title: true } });
   const slug =
     current.title === input.title
@@ -73,11 +75,11 @@ export async function updateSong(id: string, formData: FormData) {
     prisma.song.update({
       where: { id },
       data: {
-        ...input,
+        ...songData,
         slug,
-        tags: { set: [], connectOrCreate: await tagConnections(input.tags) },
+        tags: { set: [], connectOrCreate: await tagConnections(tags) },
         playlistSongs: {
-          create: input.playlistIds.map((playlistId, index) => ({
+          create: playlistIds.map((playlistId, index) => ({
             playlistId,
             position: index + 1
           }))
