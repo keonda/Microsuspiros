@@ -7,7 +7,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
-  if (pathname === "/api/auth/status") {
+  if (pathname === "/api/auth/status" || pathname === "/api/auth/login" || pathname === "/api/auth/logout") {
     return NextResponse.next();
   }
 

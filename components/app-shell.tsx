@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { BookOpenText, Home, ListMusic, Sparkles, Workflow } from "lucide-react";
-import { logoutAction } from "@/actions/auth-actions";
 import { isAuthConfigured } from "@/lib/auth";
 
 const nav = [
@@ -47,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-2">
               {authEnabled ? (
-                <form action={logoutAction}>
+                <form action="/api/auth/logout" method="post">
                   <button className="rounded-lg bg-white/8 px-4 py-2 text-sm font-semibold text-mist ring-1 ring-white/10 hover:bg-white/12">Logout</button>
                 </form>
               ) : null}

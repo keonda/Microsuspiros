@@ -1,23 +1,21 @@
-"use server";
-
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE, adminPassword, adminSessionToken, adminUsername, isAuthConfigured, secureAdminCookie } from "@/lib/auth";
 
-export async function loginAction(formData: FormData) {
+export async function POST(request: NextRequest) {
   if (!isAuthConfigured()) {
-    redirect("/");
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
+  const formData = await request.formData();
   const username = String(formData.get("username") ?? "");
   const password = String(formData.get("password") ?? "");
 
   if (username !== adminUsername() || password !== adminPassword()) {
-    redirect("/login?error=1");
+    return NextResponse.redirect(new URL("/login?error=1", request.url));
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set(AUTH_COOKIE, await adminSessionToken(), {
+  const response = NextResponse.redirect(new URL("/", request.url));
+  response.cookies.set(AUTH_COOKIE, await adminSessionToken(), {
     httpOnly: true,
     sameSite: "lax",
     secure: secureAdminCookie(),
@@ -25,11 +23,5 @@ export async function loginAction(formData: FormData) {
     maxAge: 60 * 60 * 24 * 7
   });
 
-  redirect("/");
-}
-
-export async function logoutAction() {
-  const cookieStore = await cookies();
-  cookieStore.delete(AUTH_COOKIE);
-  redirect("/login");
+  return response;
 }
