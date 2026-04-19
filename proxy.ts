@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE, adminPassword, adminSessionToken, adminUsername, isAuthConfigured } from "@/lib/auth";
+import { publicUrl } from "@/lib/request-url";
 
 export async function proxy(request: NextRequest) {
   if (!isAuthConfigured()) {
@@ -19,11 +20,11 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isLogin && isAuthed) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(publicUrl(request, "/"));
   }
 
   if (!isLogin && !isAuthed) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(publicUrl(request, "/login"));
   }
 
   return NextResponse.next();
