@@ -7,6 +7,10 @@ function cleanEnv(value: string | undefined) {
 
 export async function adminSessionToken() {
   const input = `microsuspiros-admin:${adminSessionSecret()}`;
+  return hashText(input);
+}
+
+export async function hashText(input: string) {
   const bytes = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest))

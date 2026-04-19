@@ -141,3 +141,5 @@ ADMIN_COOKIE_SECURE="false"
 ```
 
 Set those in Coolify to protect the admin panel. For local open testing, leave the first three unset. If the site is available through HTTPS only, set `ADMIN_COOKIE_SECURE` to `true`; if you are testing through plain HTTP, keep it `false` so the browser will accept the login cookie. This is intentionally lightweight so a full auth provider can be added later without rewriting the admin pages.
+
+If login rejects credentials, open `/api/auth/status` and compare `expectedUsername`, `expectedUsernameLength`, `expectedPasswordLength`, and `expectedPasswordHash8` with the diagnostic shown on the login error message. These values are for deployment debugging and should be removed once auth is confirmed.

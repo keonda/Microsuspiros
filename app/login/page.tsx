@@ -5,7 +5,17 @@ import { authEnvHint, isAuthConfigured } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({
+  searchParams
+}: {
+  searchParams: Promise<{
+    error?: string;
+    submittedUser?: string;
+    submittedUserLength?: string;
+    submittedPasswordLength?: string;
+    submittedPasswordHash8?: string;
+  }>;
+}) {
   if (!isAuthConfigured()) {
     redirect("/");
   }
@@ -18,7 +28,15 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <p className="mb-2 text-xs uppercase tracking-[0.18em] text-rose">MicroSuspiros</p>
         <h1 className="text-2xl font-semibold text-white">Admin Login</h1>
         <p className="mt-2 text-sm leading-6 text-mist/65">Enter the local admin credentials configured for this deployment.</p>
-        {params.error ? <p className="mt-4 rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">Those credentials did not match.</p> : null}
+        {params.error ? (
+          <div className="mt-4 rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">
+            <p>Those credentials did not match.</p>
+            <p className="mt-2 text-xs text-red-100/75">
+              Submitted user: {params.submittedUser || "(blank)"} · user length: {params.submittedUserLength || "0"} · password length:{" "}
+              {params.submittedPasswordLength || "0"} · password check: {params.submittedPasswordHash8 || "(blank)"}
+            </p>
+          </div>
+        ) : null}
         <form action="/api/auth/login" method="post" className="mt-6 space-y-4">
           <input name="username" className={inputClass()} placeholder="Username" autoComplete="username" required />
           <input name="password" type="password" className={inputClass()} placeholder="Password" autoComplete="current-password" required />
