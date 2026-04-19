@@ -5,6 +5,15 @@ function cleanEnv(value: string | undefined) {
   return trimmed.replace(/^['"]|['"]$/g, "");
 }
 
+export async function adminSessionToken() {
+  const input = `microsuspiros-admin:${adminSessionSecret()}`;
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function isAuthConfigured() {
   return Boolean(adminUsername() && adminPassword() && adminSessionSecret());
 }

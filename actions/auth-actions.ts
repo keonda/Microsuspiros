@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE, adminPassword, adminSessionSecret, adminUsername, isAuthConfigured, secureAdminCookie } from "@/lib/auth";
+import { AUTH_COOKIE, adminPassword, adminSessionToken, adminUsername, isAuthConfigured, secureAdminCookie } from "@/lib/auth";
 
 export async function loginAction(formData: FormData) {
   if (!isAuthConfigured()) {
@@ -17,7 +17,7 @@ export async function loginAction(formData: FormData) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(AUTH_COOKIE, adminSessionSecret(), {
+  cookieStore.set(AUTH_COOKIE, await adminSessionToken(), {
     httpOnly: true,
     sameSite: "lax",
     secure: secureAdminCookie(),

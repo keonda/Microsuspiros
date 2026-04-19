@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AUTH_COOKIE, adminPassword, adminSessionSecret, adminUsername, isAuthConfigured } from "@/lib/auth";
+import { AUTH_COOKIE, adminPassword, adminSessionToken, adminUsername, isAuthConfigured } from "@/lib/auth";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   if (!isAuthConfigured()) {
     return NextResponse.next();
   }
 
   const { pathname } = request.nextUrl;
   const isLogin = pathname === "/login";
-  const isAuthed = request.cookies.get(AUTH_COOKIE)?.value === adminSessionSecret();
+  const isAuthed = request.cookies.get(AUTH_COOKIE)?.value === (await adminSessionToken());
 
   if (!adminUsername() || !adminPassword()) {
     return NextResponse.next();
