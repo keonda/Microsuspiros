@@ -131,4 +131,12 @@ To add Groq later, replace the mock string builders with a Groq client call, kee
 
 ## Auth
 
-The app currently runs in simple local admin mode with no auth wall. The layout and data access are structured so middleware or a session provider can be added later without rewriting the admin pages.
+The app includes a simple env-controlled login gate. It stays disabled until all three variables are set:
+
+```bash
+ADMIN_USERNAME="admin"
+ADMIN_PASSWORD="use-a-strong-password"
+ADMIN_SESSION_SECRET="use-a-long-random-string"
+```
+
+Set those in Coolify to protect the admin panel. For local open testing, leave them unset. This is intentionally lightweight so a full auth provider can be added later without rewriting the admin pages.
