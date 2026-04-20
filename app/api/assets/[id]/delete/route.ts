@@ -30,5 +30,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   revalidatePath("/");
   revalidatePath("/workflow");
 
+  if (request.headers.get("accept")?.includes("application/json") || request.headers.get("x-requested-with") === "fetch") {
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.redirect(publicUrl(request, asset.songId ? `/songs/${asset.songId}` : "/songs"), 303);
 }

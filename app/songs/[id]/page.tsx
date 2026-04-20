@@ -1,7 +1,8 @@
-import { AIGenerationKind, AssetType, PublishContentType, PublishPlatform, type Asset, type PublishEvent } from "@prisma/client";
+import { AIGenerationKind, PublishContentType, PublishPlatform, type PublishEvent } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { logPublishEvent } from "@/actions/publish-actions";
 import { applyAIGeneration, deleteSong, duplicateSong, generateMetadata, generateSongAI, markSongReady, updateSong } from "@/actions/song-actions";
+import { AssetManager } from "@/components/asset-manager";
 import { CopyButton } from "@/components/copy-button";
 import { PageHeading } from "@/components/page-heading";
 import { SongForm } from "@/components/song-form";
@@ -12,7 +13,7 @@ import { inputClass } from "@/components/ui/field";
 import { dateLabel } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { songReadiness } from "@/lib/song-readiness";
-import { formatFileSize, getPublicAssetUrl } from "@/lib/asset-utils";
+import { getPublicAssetUrl } from "@/lib/asset-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,17 @@ export default async function SongDetailPage({ params, searchParams }: { params:
           <Card>
             <SongForm song={song} playlists={playlists} action={updateSong.bind(null, song.id)} submitLabel="Save changes" />
           </Card>
-          <AssetsPanel songId={song.id} assets={song.assets} error={query.assetError} />
+          <Card>
+            <AssetManager
+              songId={song.id}
+              initialAssets={song.assets.map((asset) => ({ ...asset, publicUrl: getPublicAssetUrl(asset) }))}
+            />
+            {query.assetError ? (
+              <p className="mt-4 rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">
+                Last upload error: {decodeURIComponent(query.assetError.replaceAll("+", " "))}
+              </p>
+            ) : null}
+          </Card>
           <PublishingPanel songId={song.id} events={publishEvents} />
         </div>
 
@@ -178,75 +189,7 @@ export default async function SongDetailPage({ params, searchParams }: { params:
   );
 }
 
-type SongAsset = Asset;
 type PublishItem = PublishEvent;
-
-function AssetsPanel({ songId, assets, error }: { songId: string; assets: SongAsset[]; error?: string }) {
-  return (
-    <Card>
-      <CardTitle title="Assets" eyebrow={`${assets.length} attached`} />
-      {error ? (
-        <p className="mb-4 rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">
-          Upload failed: {decodeURIComponent(error.replaceAll("+", " "))}
-        </p>
-      ) : null}
-      <div className="grid gap-4 xl:grid-cols-2">
-        <form action={`/api/songs/${songId}/assets`} method="post" encType="multipart/form-data" className="space-y-3 rounded-lg bg-white/5 p-4">
-          <input type="hidden" name="mode" value="upload" />
-          <p className="text-sm font-semibold text-white">Upload file</p>
-          <select name="type" className={inputClass()} defaultValue={AssetType.COVER_ART}>
-            {Object.values(AssetType).map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
-          </select>
-          <input name="title" className={inputClass()} placeholder="Cover art, full mix, short audio..." />
-          <input name="file" type="file" className={inputClass()} />
-          <textarea name="notes" rows={2} className={inputClass()} placeholder="Notes" />
-          <label className="flex items-center gap-2 text-sm text-mist/70"><input name="isPrimary" type="checkbox" /> Primary for this type</label>
-          <Button type="submit">Upload asset</Button>
-        </form>
-        <form action={`/api/songs/${songId}/assets`} method="post" className="space-y-3 rounded-lg bg-white/5 p-4">
-          <input type="hidden" name="mode" value="external" />
-          <p className="text-sm font-semibold text-white">Attach external URL</p>
-          <select name="type" className={inputClass()} defaultValue={AssetType.OTHER}>
-            {Object.values(AssetType).map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
-          </select>
-          <input name="title" className={inputClass()} placeholder="SoundCloud master, Drive video..." />
-          <input name="url" type="url" className={inputClass()} placeholder="https://..." />
-          <textarea name="notes" rows={2} className={inputClass()} placeholder="Notes" />
-          <label className="flex items-center gap-2 text-sm text-mist/70"><input name="isPrimary" type="checkbox" /> Primary for this type</label>
-          <Button type="submit" variant="secondary">Attach URL</Button>
-        </form>
-      </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
-        {assets.length ? assets.map((asset) => <AssetCard key={asset.id} asset={asset} />) : <p className="rounded-lg bg-white/5 p-4 text-sm text-mist/60">No assets yet. Add cover art, audio, video, or reference links here.</p>}
-      </div>
-    </Card>
-  );
-}
-
-function AssetCard({ asset }: { asset: SongAsset }) {
-  const url = getPublicAssetUrl(asset);
-  return (
-    <div className="rounded-lg border border-white/10 bg-ink/35 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-white">{asset.title}</p>
-          <p className="mt-1 text-xs text-gold">{asset.type.replaceAll("_", " ")} {asset.isPrimary ? "- primary" : ""}</p>
-          <p className="mt-1 text-xs text-mist/50">{asset.fileName || asset.url || "Stored asset"} - {formatFileSize(asset.fileSize)}</p>
-        </div>
-        <form action={`/api/assets/${asset.id}/delete`} method="post">
-          <Button type="submit" variant="danger">Delete</Button>
-        </form>
-      </div>
-      {asset.type === AssetType.COVER_ART && url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={asset.title} className="mt-3 max-h-56 w-full rounded-lg object-cover" />
-      ) : null}
-      {(asset.type === AssetType.AUDIO_FULL || asset.type === AssetType.AUDIO_SHORT) && url ? <audio src={url} controls className="mt-3 w-full" /> : null}
-      {url ? <a href={url} target="_blank" className="mt-3 inline-block text-sm text-rose hover:text-rose/80">Open asset</a> : null}
-      {asset.notes ? <p className="mt-2 text-sm text-mist/60">{asset.notes}</p> : null}
-    </div>
-  );
-}
 
 function PublishingPanel({ songId, events }: { songId: string; events: PublishItem[] }) {
   return (
