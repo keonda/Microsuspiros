@@ -51,7 +51,41 @@ enum PublishContentType {
   SHORT
   PLAYLIST
   EXCERPT
+  TEASER
   OTHER
+}
+
+enum ReleaseCampaignStatus {
+  DRAFT
+  PLANNING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum ReleaseCampaignGoal {
+  SONG_LAUNCH
+  SHORTS_PUSH
+  PLAYLIST_DROP
+  WEBSITE_PUSH
+  MIXED
+}
+
+enum CampaignItemType {
+  SONG
+  SHORT
+  PLAYLIST
+  WEBSITE_POST
+  EXCERPT
+  OTHER
+}
+
+enum ScheduledReleaseStatus {
+  PLANNED
+  SCHEDULED
+  PUBLISHED
+  SKIPPED
+  CANCELED
 }
 
 enum AIGenerationKind {
@@ -92,6 +126,8 @@ model Song {
   assets             Asset[]
   aiGenerationLogs   AIGenerationLog[]
   publishEvents      PublishEvent[]
+  campaignItems      CampaignItem[]
+  scheduledReleases  ScheduledRelease[]
 
   @@index([status])
   @@index([updatedAt])
@@ -115,6 +151,8 @@ model Playlist {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   playlistSongs PlaylistSong[]
+  campaignItems CampaignItem[]
+  scheduledReleases ScheduledRelease[]
 
   @@index([type])
   @@index([updatedAt])
@@ -184,4 +222,73 @@ model PublishEvent {
   @@index([songId])
   @@index([platform])
   @@index([publishedAt])
+}
+
+model ReleaseCampaign {
+  id                String                @id @default(cuid())
+  title             String
+  slug              String                @unique
+  description       String?
+  status            ReleaseCampaignStatus @default(DRAFT)
+  goal              ReleaseCampaignGoal   @default(MIXED)
+  startDate         DateTime?
+  endDate           DateTime?
+  notes             String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  items             CampaignItem[]
+  scheduledReleases ScheduledRelease[]
+
+  @@index([status])
+  @@index([goal])
+  @@index([startDate])
+}
+
+model CampaignItem {
+  id         String           @id @default(cuid())
+  campaignId String
+  songId     String?
+  playlistId String?
+  itemType   CampaignItemType @default(OTHER)
+  title      String?
+  notes      String?
+  priority   Int              @default(0)
+  createdAt  DateTime         @default(now())
+  campaign   ReleaseCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  song       Song?            @relation(fields: [songId], references: [id], onDelete: SetNull)
+  playlist   Playlist?        @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId])
+  @@index([songId])
+  @@index([playlistId])
+  @@index([priority])
+}
+
+model ScheduledRelease {
+  id          String                 @id @default(cuid())
+  songId      String?
+  playlistId  String?
+  campaignId  String?
+  platform    PublishPlatform        @default(OTHER)
+  contentType PublishContentType     @default(OTHER)
+  status      ScheduledReleaseStatus @default(PLANNED)
+  title       String
+  scheduledFor DateTime?
+  publishedAt DateTime?
+  notes       String?
+  ctaText     String?
+  url         String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  song        Song?                  @relation(fields: [songId], references: [id], onDelete: SetNull)
+  playlist    Playlist?              @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  campaign    ReleaseCampaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([songId])
+  @@index([playlistId])
+  @@index([campaignId])
+  @@index([platform])
+  @@index([contentType])
+  @@index([status])
+  @@index([scheduledFor])
 }

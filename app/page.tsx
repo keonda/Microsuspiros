@@ -1,18 +1,22 @@
 import Link from "next/link";
-import { ArrowRight, FileAudio, FileWarning, ListPlus, Music2, Radio, Sparkles } from "lucide-react";
-import { AssetType, SongStatus } from "@prisma/client";
+import { ArrowRight, CalendarDays, FileAudio, FileWarning, Flag, ListPlus, Music2, Radio, Sparkles } from "lucide-react";
+import { AssetType, ReleaseCampaignStatus, ScheduledReleaseStatus, SongStatus } from "@prisma/client";
 import { PageHeading } from "@/components/page-heading";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { dateLabel } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { buildReleaseQueue } from "@/lib/release-queue";
 import { songReadiness } from "@/lib/song-readiness";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [allSongs, drafts, ready, published, playlistsCount, recentSongs, recentUpdated, aiDrafts, recentAssets, recentPublishes] = await Promise.all([
-    prisma.song.findMany({ include: { assets: true, publishEvents: true } }),
+  const now = new Date();
+  const weekAhead = new Date();
+  weekAhead.setDate(weekAhead.getDate() + 7);
+  const [allSongs, drafts, ready, published, playlistsCount, recentSongs, recentUpdated, aiDrafts, recentAssets, recentPublishes, activeCampaigns, scheduledThisWeek, overdueReleases, upcomingReleases] = await Promise.all([
+    prisma.song.findMany({ include: { assets: true, publishEvents: true, scheduledReleases: true, campaignItems: true, aiGenerationLogs: true, playlistSongs: true } }),
     prisma.song.count({ where: { status: SongStatus.DRAFT } }),
     prisma.song.count({ where: { status: SongStatus.READY } }),
     prisma.song.count({ where: { status: SongStatus.PUBLISHED } }),
@@ -21,9 +25,19 @@ export default async function DashboardPage() {
     prisma.song.findMany({ take: 5, orderBy: { updatedAt: "desc" }, include: { tags: true } }),
     prisma.aIGenerationLog.count(),
     prisma.asset.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { song: true } }),
-    prisma.publishEvent.findMany({ take: 5, orderBy: { publishedAt: "desc" }, include: { song: true } })
+    prisma.publishEvent.findMany({ take: 5, orderBy: { publishedAt: "desc" }, include: { song: true } }),
+    prisma.releaseCampaign.count({ where: { status: { in: [ReleaseCampaignStatus.PLANNING, ReleaseCampaignStatus.ACTIVE] } } }),
+    prisma.scheduledRelease.count({ where: { scheduledFor: { gte: now, lte: weekAhead }, status: { in: [ScheduledReleaseStatus.PLANNED, ScheduledReleaseStatus.SCHEDULED] } } }),
+    prisma.scheduledRelease.count({ where: { scheduledFor: { lt: now }, status: { notIn: [ScheduledReleaseStatus.PUBLISHED, ScheduledReleaseStatus.CANCELED, ScheduledReleaseStatus.SKIPPED] } } }),
+    prisma.scheduledRelease.findMany({
+      take: 7,
+      where: { scheduledFor: { gte: now }, status: { in: [ScheduledReleaseStatus.PLANNED, ScheduledReleaseStatus.SCHEDULED] } },
+      orderBy: { scheduledFor: "asc" },
+      include: { song: true, playlist: true, campaign: true }
+    })
   ]);
   const reports = allSongs.map((song) => ({ song, readiness: songReadiness(song) }));
+  const queue = buildReleaseQueue(allSongs);
   const totalSongs = allSongs.length;
   const missingCover = reports.filter((item) => !item.readiness.hasCoverArt).length;
   const missingFullAudio = reports.filter((item) => !item.readiness.hasFullAudio).length;
@@ -32,8 +46,15 @@ export default async function DashboardPage() {
   const readyFull = reports.filter((item) => item.readiness.readyForYoutubePublish).length;
   const fullyPublishable = reports.filter((item) => item.readiness.fullyPublishable).length;
   const staleNoPublish = allSongs.filter((song) => !song.publishEvents.length).slice(0, 5);
+  const noCampaign = allSongs.filter((song) => !song.campaignItems.length).length;
+  const noSchedule = allSongs.filter((song) => !song.scheduledReleases.length).length;
 
   const stats = [
+    { label: "Scheduled this week", value: scheduledThisWeek, icon: CalendarDays },
+    { label: "Overdue releases", value: overdueReleases, icon: FileWarning },
+    { label: "Ready now", value: queue.readyNow.length, icon: Radio },
+    { label: "Nearly ready", value: queue.nearlyReady.length, icon: Sparkles },
+    { label: "Active campaigns", value: activeCampaigns, icon: Flag },
     { label: "Total songs", value: totalSongs, icon: Music2 },
     { label: "Drafts", value: drafts, icon: Sparkles },
     { label: "Ready", value: ready, icon: Radio },
@@ -44,6 +65,8 @@ export default async function DashboardPage() {
     { label: "Ready for shorts", value: readyShorts, icon: Radio },
     { label: "Ready for full publish", value: readyFull, icon: ArrowRight },
     { label: "Fully publishable", value: fullyPublishable, icon: Sparkles },
+    { label: "No campaign", value: noCampaign, icon: Flag },
+    { label: "No schedule", value: noSchedule, icon: CalendarDays },
     { label: "AI drafts", value: aiDrafts, icon: Sparkles },
     { label: "Playlists", value: playlistsCount, icon: ListPlus }
   ];
@@ -78,6 +101,9 @@ export default async function DashboardPage() {
             {[
               ["/songs/new", "New Song"],
               ["/playlists", "New Playlist"],
+              ["/campaigns/new", "New Campaign"],
+              ["/calendar", "Schedule Release"],
+              ["/queue", "Release Queue"],
               ["/workflow", "Missing Assets"],
               ["/workflow", "Ready to Publish"]
             ].map(([href, label]) => (
@@ -87,6 +113,17 @@ export default async function DashboardPage() {
               </Link>
             ))}
           </div>
+        </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <CardTitle title="Next Best Moves" eyebrow="release queue" />
+          <QueuePreview items={queue.items.slice(0, 5)} />
+        </Card>
+        <Card>
+          <CardTitle title="Upcoming Release Calendar" eyebrow="next 7" />
+          <ReleasePreview releases={upcomingReleases} />
         </Card>
       </div>
 
@@ -184,6 +221,51 @@ function ActivityList({ title, items }: { title: string; items: Array<{ href: st
       ) : (
         <p className="text-sm text-mist/50">No activity yet.</p>
       )}
+    </div>
+  );
+}
+
+type QueuePreviewItem = ReturnType<typeof buildReleaseQueue>["items"][number];
+
+function QueuePreview({ items }: { items: QueuePreviewItem[] }) {
+  if (!items.length) return <p className="rounded-lg bg-white/5 p-4 text-sm text-mist/65">No queue signals yet.</p>;
+  return (
+    <div className="divide-y divide-white/10">
+      {items.map(({ song, recommendation }) => (
+        <Link key={song.id} href={`/songs/${song.id}`} className="block py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-medium text-white">{song.title}</p>
+              <p className="text-sm text-mist/55">{recommendation.label} - score {recommendation.score}</p>
+            </div>
+            <ArrowRight size={16} className="text-rose" />
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+type DashboardRelease = Awaited<ReturnType<typeof prisma.scheduledRelease.findMany>>[number] & {
+  song?: { id: string; title: string } | null;
+  playlist?: { id: string; title: string } | null;
+  campaign?: { id: string; title: string } | null;
+};
+
+function ReleasePreview({ releases }: { releases: DashboardRelease[] }) {
+  if (!releases.length) return <p className="rounded-lg bg-white/5 p-4 text-sm text-mist/65">The next week is open. Good place to choose the next breath.</p>;
+  return (
+    <div className="divide-y divide-white/10">
+      {releases.map((release) => {
+        const href = release.songId ? `/songs/${release.songId}` : release.playlistId ? `/playlists/${release.playlistId}` : release.campaignId ? `/campaigns/${release.campaignId}` : "/calendar";
+        const related = release.song?.title || release.playlist?.title || release.campaign?.title || "Standalone release";
+        return (
+          <Link key={release.id} href={href} className="block py-3">
+            <p className="font-medium text-white">{release.title}</p>
+            <p className="text-sm text-mist/55">{related} - {release.platform} - {release.scheduledFor ? dateLabel(release.scheduledFor) : "unscheduled"}</p>
+          </Link>
+        );
+      })}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { AssetType, PlaylistType } from "@prisma/client";
+import { AssetType, PlaylistType, PublishContentType, PublishPlatform, ScheduledReleaseStatus } from "@prisma/client";
 import { addSongToPlaylist, deletePlaylist, removeSongFromPlaylist, updatePlaylist, updatePlaylistOrder } from "@/actions/playlist-actions";
+import { assignPlaylistToCampaign, scheduleRelease } from "@/actions/release-actions";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -12,12 +13,16 @@ export const dynamic = "force-dynamic";
 
 export default async function PlaylistDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [playlist, songs] = await Promise.all([
+  const [playlist, songs, campaigns] = await Promise.all([
     prisma.playlist.findUnique({
       where: { id },
-      include: { playlistSongs: { include: { song: { include: { assets: true } } }, orderBy: { position: "asc" } } }
+      include: {
+        playlistSongs: { include: { song: { include: { assets: true } } }, orderBy: { position: "asc" } },
+        scheduledReleases: { orderBy: { scheduledFor: "asc" } }
+      }
     }),
-    prisma.song.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } })
+    prisma.song.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } }),
+    prisma.releaseCampaign.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } })
   ]);
   if (!playlist) notFound();
 
@@ -64,6 +69,30 @@ export default async function PlaylistDetailPage({ params }: { params: Promise<{
           <Card>
             <form action={deletePlaylist.bind(null, playlist.id)}>
               <Button type="submit" variant="danger" className="w-full">Delete playlist</Button>
+            </form>
+          </Card>
+          <Card>
+            <CardTitle title="Schedule Playlist" />
+            <form action={scheduleRelease} className="space-y-3">
+              <input type="hidden" name="playlistId" value={playlist.id} />
+              <input name="title" defaultValue={playlist.title} className={inputClass()} />
+              <input name="scheduledFor" type="datetime-local" className={inputClass()} />
+              <select name="platform" className={inputClass()} defaultValue={PublishPlatform.YOUTUBE}>{Object.values(PublishPlatform).map((platform) => <option key={platform} value={platform}>{platform}</option>)}</select>
+              <select name="contentType" className={inputClass()} defaultValue={PublishContentType.PLAYLIST}>{Object.values(PublishContentType).map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>
+              <select name="status" className={inputClass()} defaultValue={ScheduledReleaseStatus.PLANNED}>{Object.values(ScheduledReleaseStatus).map((status) => <option key={status} value={status}>{status}</option>)}</select>
+              <select name="campaignId" className={inputClass()} defaultValue=""><option value="">No campaign</option>{campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.title}</option>)}</select>
+              <Button type="submit" variant="secondary">Schedule playlist</Button>
+            </form>
+          </Card>
+          <Card>
+            <CardTitle title="Campaign Planning" />
+            <form action={assignPlaylistToCampaign.bind(null, playlist.id)} className="space-y-3">
+              <select name="campaignId" className={inputClass()} defaultValue="">
+                <option value="" disabled>Choose campaign</option>
+                {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.title}</option>)}
+              </select>
+              <textarea name="notes" rows={2} className={inputClass()} placeholder="How this playlist supports the release arc" />
+              <Button type="submit" variant="secondary">Add playlist to campaign</Button>
             </form>
           </Card>
         </div>

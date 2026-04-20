@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { BookOpenText, Home, ListMusic, Sparkles, Workflow } from "lucide-react";
+import { BookOpenText, CalendarDays, Flag, Home, ListMusic, Sparkles, Workflow } from "lucide-react";
 import { isAuthConfigured } from "@/lib/auth";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/songs", label: "Songs", icon: BookOpenText },
   { href: "/playlists", label: "Playlists", icon: ListMusic },
+  { href: "/campaigns", label: "Campaigns", icon: Flag },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/queue", label: "Queue", icon: Sparkles },
   { href: "/workflow", label: "Workflow", icon: Workflow }
 ];
 

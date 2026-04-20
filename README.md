@@ -21,6 +21,8 @@ A self-hosted Next.js admin panel for managing MicroSuspiros songs, suspiro shor
 - Playlist CRUD with explicit song ordering
 - Workflow page for missing cover art, missing short versions, YouTube gaps, and ready-to-publish songs
 - Mock AI metadata generation in `lib/ai.ts`, structured for future Groq integration
+- Release campaigns, publishing calendar, and rule-based release queue recommendations
+- Manual scheduling for YouTube, website, shorts, playlists, teasers, and campaign moments
 - Prisma schema, migration, and seed data with original Spanish placeholder content
 
 ## Local Setup
@@ -85,6 +87,10 @@ The Prisma schema includes:
 - `PlaylistSong` with explicit ordering
 - `Asset`
 - `AIGenerationLog`
+- `PublishEvent`
+- `ReleaseCampaign`
+- `CampaignItem`
+- `ScheduledRelease`
 
 Run `npm run prisma:migrate` during local development. In production, the `start` script applies pending migrations with `prisma migrate deploy` before starting Next.js.
 
@@ -195,6 +201,43 @@ Publish history is logged from each song page and tracks platform, content type,
 ## Phase 3 Migration
 
 Phase 3 extends `Asset`, adds local/external storage metadata, and creates `PublishEvent`. After pulling this version, run:
+
+```bash
+npm run prisma:generate
+npx prisma migrate deploy
+```
+
+## Release Planning
+
+Phase 4 adds the release operating system layer:
+
+- `/campaigns` groups songs, playlists, shorts, excerpts, and website posts into release arcs.
+- `/calendar` tracks planned, scheduled, published, skipped, and canceled release entries.
+- `/queue` ranks songs with deterministic recommendations such as `Publish Now`, `Good Shorts Candidate`, `Finish Metadata`, and `Missing Cover`.
+- Song pages now show campaign membership, scheduling, queue status, and release readiness.
+- Playlist pages can be added to campaigns and scheduled as playlist releases.
+- Dashboard and workflow views include active campaigns, overdue releases, next best moves, upcoming releases, unscheduled ready songs, and no-campaign gaps.
+
+Release queue behavior can be tuned with:
+
+```bash
+DEFAULT_TIMEZONE="America/Los_Angeles"
+RELEASE_QUEUE_STALE_DAYS="30"
+RELEASE_QUEUE_RECENT_DAYS="10"
+```
+
+The recommendation engine is rule-based and lives in:
+
+```bash
+lib/release-recommendations.ts
+lib/release-queue.ts
+```
+
+It does not require Groq or any external API.
+
+## Phase 4 Migration
+
+Phase 4 adds `ReleaseCampaign`, `CampaignItem`, and `ScheduledRelease`, plus a `TEASER` content type for scheduled releases. After pulling this version, run:
 
 ```bash
 npm run prisma:generate

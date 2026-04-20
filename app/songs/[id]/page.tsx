@@ -1,6 +1,7 @@
-import { AIGenerationKind, PublishContentType, PublishPlatform, type PublishEvent } from "@prisma/client";
+import { AIGenerationKind, PublishContentType, PublishPlatform, ScheduledReleaseStatus, type PublishEvent } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { logPublishEvent } from "@/actions/publish-actions";
+import { assignSongToCampaign, markScheduledReleasePublished, scheduleRelease } from "@/actions/release-actions";
 import { applyAIGeneration, deleteSong, duplicateSong, generateMetadata, generateSongAI, markSongReady, updateSong } from "@/actions/song-actions";
 import { AssetManager } from "@/components/asset-manager";
 import { CopyButton } from "@/components/copy-button";
@@ -14,21 +15,35 @@ import { dateLabel } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { songReadiness } from "@/lib/song-readiness";
 import { getPublicAssetUrl } from "@/lib/asset-utils";
+import { releaseRecommendation } from "@/lib/release-recommendations";
 
 export const dynamic = "force-dynamic";
 
 export default async function SongDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ assetError?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
-  const [song, playlists, logs, publishEvents] = await Promise.all([
-    prisma.song.findUnique({ where: { id }, include: { tags: true, playlistSongs: true, assets: { orderBy: { createdAt: "desc" } } } }),
+  const [song, playlists, logs, publishEvents, campaigns] = await Promise.all([
+    prisma.song.findUnique({
+      where: { id },
+      include: {
+        tags: true,
+        playlistSongs: true,
+        assets: { orderBy: { createdAt: "desc" } },
+        campaignItems: { include: { campaign: true }, orderBy: { createdAt: "desc" } },
+        scheduledReleases: { include: { campaign: true }, orderBy: { scheduledFor: "asc" } },
+        aiGenerationLogs: { orderBy: { createdAt: "desc" }, take: 5 },
+        publishEvents: true
+      }
+    }),
     prisma.playlist.findMany({ orderBy: { title: "asc" } }),
     prisma.aIGenerationLog.findMany({ where: { songId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
-    prisma.publishEvent.findMany({ where: { songId: id }, orderBy: { publishedAt: "desc" }, take: 12 })
+    prisma.publishEvent.findMany({ where: { songId: id }, orderBy: { publishedAt: "desc" }, take: 12 }),
+    prisma.releaseCampaign.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } })
   ]);
   if (!song) notFound();
 
   const readiness = songReadiness(song);
+  const recommendation = releaseRecommendation(song);
   const publishPacket = {
     title: song.title,
     youtubeTitle: song.youtubeTitle,
@@ -85,9 +100,15 @@ export default async function SongDetailPage({ params, searchParams }: { params:
             ) : null}
           </Card>
           <PublishingPanel songId={song.id} events={publishEvents} />
+          <ReleasePlanningPanel songId={song.id} songTitle={song.title} campaigns={campaigns} campaignItems={song.campaignItems} scheduledReleases={song.scheduledReleases} />
         </div>
 
         <div className="order-1 space-y-6 xl:order-2">
+          <Card>
+            <CardTitle title="Queue Status" eyebrow={recommendation.label} />
+            <p className="text-sm text-mist/65">Score {recommendation.score}. {recommendation.suggestions[0] || "Review this song for the next release move."}</p>
+            <div className="mt-3 flex flex-wrap gap-2">{recommendation.suggestions.map((suggestion) => <Pill key={suggestion}>{suggestion}</Pill>)}</div>
+          </Card>
           <Card>
             <CardTitle title="Readiness Checklist" eyebrow={readiness.fullyPublishable ? "fully publishable" : "needs attention"} />
             <div className="space-y-2">
@@ -190,6 +211,21 @@ export default async function SongDetailPage({ params, searchParams }: { params:
 }
 
 type PublishItem = PublishEvent;
+type SongCampaignItem = {
+  id: string;
+  campaignId: string;
+  itemType: string;
+  campaign: { title: string };
+};
+type SongScheduledRelease = {
+  id: string;
+  title: string;
+  platform: PublishPlatform;
+  contentType: PublishContentType;
+  status: ScheduledReleaseStatus;
+  scheduledFor: Date | null;
+  campaign: { title: string } | null;
+};
 
 function PublishingPanel({ songId, events }: { songId: string; events: PublishItem[] }) {
   return (
@@ -218,6 +254,71 @@ function PublishingPanel({ songId, events }: { songId: string; events: PublishIt
             {event.notes ? <p className="mt-2 text-sm text-mist/60">{event.notes}</p> : null}
           </div>
         )) : <p className="rounded-lg bg-white/5 p-4 text-sm text-mist/60">No publish events yet.</p>}
+      </div>
+    </Card>
+  );
+}
+
+function ReleasePlanningPanel({
+  songId,
+  songTitle,
+  campaigns,
+  campaignItems,
+  scheduledReleases
+}: {
+  songId: string;
+  songTitle: string;
+  campaigns: Array<{ id: string; title: string }>;
+  campaignItems: SongCampaignItem[];
+  scheduledReleases: SongScheduledRelease[];
+}) {
+  return (
+    <Card>
+      <CardTitle title="Release Planning" eyebrow={`${scheduledReleases.length} scheduled`} />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-lg bg-white/5 p-4">
+          <p className="mb-3 text-sm font-semibold text-white">Campaign Membership</p>
+          {campaignItems.length ? campaignItems.map((item) => (
+            <a key={item.id} href={`/campaigns/${item.campaignId}`} className="mb-2 block rounded-lg bg-ink/35 p-3 text-sm text-mist hover:text-rose">
+              {item.campaign.title} - {item.itemType.replaceAll("_", " ")}
+            </a>
+          )) : <p className="text-sm text-mist/60">No campaign yet. Place this song inside a release arc when it has a direction.</p>}
+          <form action={assignSongToCampaign.bind(null, songId)} className="mt-4 space-y-3">
+            <select name="campaignId" className={inputClass()} defaultValue="">
+              <option value="" disabled>Choose campaign</option>
+              {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.title}</option>)}
+            </select>
+            <select name="itemType" className={inputClass()} defaultValue="SONG">
+              <option value="SONG">Song</option>
+              <option value="SHORT">Short</option>
+              <option value="WEBSITE_POST">Website post</option>
+              <option value="EXCERPT">Excerpt</option>
+              <option value="OTHER">Other</option>
+            </select>
+            <Button type="submit" variant="secondary">Add to campaign</Button>
+          </form>
+        </div>
+        <form action={scheduleRelease} className="space-y-3 rounded-lg bg-white/5 p-4">
+          <input type="hidden" name="songId" value={songId} />
+          <p className="text-sm font-semibold text-white">Schedule this song</p>
+          <input name="title" defaultValue={songTitle} className={inputClass()} />
+          <input name="scheduledFor" type="datetime-local" className={inputClass()} />
+          <select name="platform" className={inputClass()} defaultValue={PublishPlatform.YOUTUBE}>{Object.values(PublishPlatform).map((platform) => <option key={platform} value={platform}>{platform}</option>)}</select>
+          <select name="contentType" className={inputClass()} defaultValue={PublishContentType.SHORT}>{Object.values(PublishContentType).map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>
+          <select name="status" className={inputClass()} defaultValue={ScheduledReleaseStatus.PLANNED}>{Object.values(ScheduledReleaseStatus).map((status) => <option key={status} value={status}>{status}</option>)}</select>
+          <select name="campaignId" className={inputClass()} defaultValue=""><option value="">No campaign</option>{campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.title}</option>)}</select>
+          <Button type="submit">Schedule</Button>
+        </form>
+      </div>
+      <div className="mt-5 space-y-3">
+        {scheduledReleases.length ? scheduledReleases.map((release) => (
+          <div key={release.id} className="rounded-lg bg-white/5 p-3">
+            <p className="font-medium text-white">{release.title}</p>
+            <p className="text-sm text-mist/55">{release.platform} - {release.contentType.replaceAll("_", " ")} - {release.scheduledFor ? dateLabel(release.scheduledFor) : "unscheduled"}</p>
+            <p className="text-xs text-gold">{release.status}{release.campaign ? ` - ${release.campaign.title}` : ""}</p>
+            {release.status !== "PUBLISHED" ? <form action={markScheduledReleasePublished.bind(null, release.id)} className="mt-2"><Button type="submit" variant="secondary">Mark published</Button></form> : null}
+          </div>
+        )) : <p className="rounded-lg bg-white/5 p-3 text-sm text-mist/60">Nothing scheduled yet.</p>}
       </div>
     </Card>
   );

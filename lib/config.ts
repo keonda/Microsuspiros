@@ -21,7 +21,10 @@ export function appConfig() {
     s3Region: clean(process.env.S3_REGION),
     s3Endpoint: clean(process.env.S3_ENDPOINT),
     s3AccessKey: clean(process.env.S3_ACCESS_KEY),
-    s3SecretKey: clean(process.env.S3_SECRET_KEY)
+    s3SecretKey: clean(process.env.S3_SECRET_KEY),
+    defaultTimezone: clean(process.env.DEFAULT_TIMEZONE) || "America/Los_Angeles",
+    releaseQueueStaleDays: Number(clean(process.env.RELEASE_QUEUE_STALE_DAYS)) || 21,
+    releaseQueueRecentDays: Number(clean(process.env.RELEASE_QUEUE_RECENT_DAYS)) || 7
   } satisfies {
     appName: string;
     baseUrl: string;
@@ -35,5 +38,8 @@ export function appConfig() {
     s3Endpoint: string;
     s3AccessKey: string;
     s3SecretKey: string;
+    defaultTimezone: string;
+    releaseQueueStaleDays: number;
+    releaseQueueRecentDays: number;
   };
 }
