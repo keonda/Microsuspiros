@@ -1,6 +1,6 @@
 import { AIGenerationKind, AssetType, PublishContentType, PublishPlatform, type Asset, type PublishEvent } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { attachExternalAsset, deleteAsset, logPublishEvent, uploadSongAsset } from "@/actions/asset-actions";
+import { logPublishEvent } from "@/actions/publish-actions";
 import { applyAIGeneration, deleteSong, duplicateSong, generateMetadata, generateSongAI, markSongReady, updateSong } from "@/actions/song-actions";
 import { CopyButton } from "@/components/copy-button";
 import { PageHeading } from "@/components/page-heading";
@@ -16,8 +16,9 @@ import { formatFileSize, getPublicAssetUrl } from "@/lib/asset-utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function SongDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SongDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ assetError?: string }> }) {
   const { id } = await params;
+  const query = await searchParams;
   const [song, playlists, logs, publishEvents] = await Promise.all([
     prisma.song.findUnique({ where: { id }, include: { tags: true, playlistSongs: true, assets: { orderBy: { createdAt: "desc" } } } }),
     prisma.playlist.findMany({ orderBy: { title: "asc" } }),
@@ -71,7 +72,7 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
           <Card>
             <SongForm song={song} playlists={playlists} action={updateSong.bind(null, song.id)} submitLabel="Save changes" />
           </Card>
-          <AssetsPanel songId={song.id} assets={song.assets} />
+          <AssetsPanel songId={song.id} assets={song.assets} error={query.assetError} />
           <PublishingPanel songId={song.id} events={publishEvents} />
         </div>
 
@@ -180,12 +181,18 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
 type SongAsset = Asset;
 type PublishItem = PublishEvent;
 
-function AssetsPanel({ songId, assets }: { songId: string; assets: SongAsset[] }) {
+function AssetsPanel({ songId, assets, error }: { songId: string; assets: SongAsset[]; error?: string }) {
   return (
     <Card>
       <CardTitle title="Assets" eyebrow={`${assets.length} attached`} />
+      {error ? (
+        <p className="mb-4 rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">
+          Upload failed: {decodeURIComponent(error.replaceAll("+", " "))}
+        </p>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-2">
-        <form action={uploadSongAsset.bind(null, songId)} className="space-y-3 rounded-lg bg-white/5 p-4">
+        <form action={`/api/songs/${songId}/assets`} method="post" encType="multipart/form-data" className="space-y-3 rounded-lg bg-white/5 p-4">
+          <input type="hidden" name="mode" value="upload" />
           <p className="text-sm font-semibold text-white">Upload file</p>
           <select name="type" className={inputClass()} defaultValue={AssetType.COVER_ART}>
             {Object.values(AssetType).map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
@@ -196,7 +203,8 @@ function AssetsPanel({ songId, assets }: { songId: string; assets: SongAsset[] }
           <label className="flex items-center gap-2 text-sm text-mist/70"><input name="isPrimary" type="checkbox" /> Primary for this type</label>
           <Button type="submit">Upload asset</Button>
         </form>
-        <form action={attachExternalAsset.bind(null, songId)} className="space-y-3 rounded-lg bg-white/5 p-4">
+        <form action={`/api/songs/${songId}/assets`} method="post" className="space-y-3 rounded-lg bg-white/5 p-4">
+          <input type="hidden" name="mode" value="external" />
           <p className="text-sm font-semibold text-white">Attach external URL</p>
           <select name="type" className={inputClass()} defaultValue={AssetType.OTHER}>
             {Object.values(AssetType).map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
@@ -225,7 +233,7 @@ function AssetCard({ asset }: { asset: SongAsset }) {
           <p className="mt-1 text-xs text-gold">{asset.type.replaceAll("_", " ")} {asset.isPrimary ? "- primary" : ""}</p>
           <p className="mt-1 text-xs text-mist/50">{asset.fileName || asset.url || "Stored asset"} - {formatFileSize(asset.fileSize)}</p>
         </div>
-        <form action={deleteAsset.bind(null, asset.id)}>
+        <form action={`/api/assets/${asset.id}/delete`} method="post">
           <Button type="submit" variant="danger">Delete</Button>
         </form>
       </div>
