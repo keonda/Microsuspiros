@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { PlaylistType } from "@prisma/client";
+import { AssetType, PlaylistType } from "@prisma/client";
 import { addSongToPlaylist, deletePlaylist, removeSongFromPlaylist, updatePlaylist, updatePlaylistOrder } from "@/actions/playlist-actions";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ export default async function PlaylistDetailPage({ params }: { params: Promise<{
   const [playlist, songs] = await Promise.all([
     prisma.playlist.findUnique({
       where: { id },
-      include: { playlistSongs: { include: { song: true }, orderBy: { position: "asc" } } }
+      include: { playlistSongs: { include: { song: { include: { assets: true } } }, orderBy: { position: "asc" } } }
     }),
     prisma.song.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } })
   ]);
@@ -23,6 +23,9 @@ export default async function PlaylistDetailPage({ params }: { params: Promise<{
 
   const inPlaylist = new Set(playlist.playlistSongs.map((item) => item.songId));
   const availableSongs = songs.filter((song) => !inPlaylist.has(song.id));
+  const coverCount = playlist.playlistSongs.filter((item) => item.song.assets.some((asset) => asset.type === AssetType.COVER_ART)).length;
+  const fullAudioCount = playlist.playlistSongs.filter((item) => item.song.assets.some((asset) => asset.type === AssetType.AUDIO_FULL)).length;
+  const shortAudioCount = playlist.playlistSongs.filter((item) => item.song.assets.some((asset) => asset.type === AssetType.AUDIO_SHORT)).length;
 
   return (
     <>
@@ -39,6 +42,14 @@ export default async function PlaylistDetailPage({ params }: { params: Promise<{
               <textarea name="description" defaultValue={playlist.description ?? ""} rows={5} className={inputClass()} />
               <Button type="submit">Save playlist</Button>
             </form>
+          </Card>
+          <Card>
+            <CardTitle title="Asset Summary" />
+            <div className="grid gap-2 text-sm text-mist/70">
+              <p>Cover art: {coverCount}/{playlist.playlistSongs.length}</p>
+              <p>Full audio: {fullAudioCount}/{playlist.playlistSongs.length}</p>
+              <p>Short audio: {shortAudioCount}/{playlist.playlistSongs.length}</p>
+            </div>
           </Card>
           <Card>
             <CardTitle title="Add Song" />

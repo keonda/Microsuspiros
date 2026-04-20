@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, FileWarning, ListPlus, Music2, Radio, Sparkles } from "lucide-react";
-import { SongStatus } from "@prisma/client";
+import { ArrowRight, FileAudio, FileWarning, ListPlus, Music2, Radio, Sparkles } from "lucide-react";
+import { AssetType, SongStatus } from "@prisma/client";
 import { PageHeading } from "@/components/page-heading";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -11,25 +11,27 @@ import { songReadiness } from "@/lib/song-readiness";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [allSongs, drafts, ready, published, playlistsCount, recentSongs, recentUpdated, aiDrafts] = await Promise.all([
-    prisma.song.findMany(),
+  const [allSongs, drafts, ready, published, playlistsCount, recentSongs, recentUpdated, aiDrafts, recentAssets, recentPublishes] = await Promise.all([
+    prisma.song.findMany({ include: { assets: true, publishEvents: true } }),
     prisma.song.count({ where: { status: SongStatus.DRAFT } }),
     prisma.song.count({ where: { status: SongStatus.READY } }),
     prisma.song.count({ where: { status: SongStatus.PUBLISHED } }),
     prisma.playlist.count(),
     prisma.song.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { tags: true } }),
     prisma.song.findMany({ take: 5, orderBy: { updatedAt: "desc" }, include: { tags: true } }),
-    prisma.aIGenerationLog.count()
+    prisma.aIGenerationLog.count(),
+    prisma.asset.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { song: true } }),
+    prisma.publishEvent.findMany({ take: 5, orderBy: { publishedAt: "desc" }, include: { song: true } })
   ]);
   const reports = allSongs.map((song) => ({ song, readiness: songReadiness(song) }));
   const totalSongs = allSongs.length;
   const missingCover = reports.filter((item) => !item.readiness.hasCoverArt).length;
-  const missingShort = reports.filter((item) => !item.readiness.hasShortVersion).length;
-  const readyYoutube = reports.filter((item) => item.readiness.readyForYoutube).length;
-  const readyWebsite = reports.filter((item) => item.readiness.readyForWebsite).length;
+  const missingFullAudio = reports.filter((item) => !item.readiness.hasFullAudio).length;
+  const missingShortAudio = reports.filter((item) => !item.readiness.hasShortAudio).length;
+  const readyShorts = reports.filter((item) => item.readiness.readyForShorts).length;
+  const readyFull = reports.filter((item) => item.readiness.readyForYoutubePublish).length;
   const fullyPublishable = reports.filter((item) => item.readiness.fullyPublishable).length;
-  const missingMetadata = reports.filter((item) => !item.readiness.hasYoutubeTitle || !item.readiness.hasYoutubeDescription || !item.readiness.hasExcerpt).length;
-  const staleDrafts = allSongs.filter((song) => song.status === SongStatus.DRAFT).sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime()).slice(0, 5);
+  const staleNoPublish = allSongs.filter((song) => !song.publishEvents.length).slice(0, 5);
 
   const stats = [
     { label: "Total songs", value: totalSongs, icon: Music2 },
@@ -37,18 +39,18 @@ export default async function DashboardPage() {
     { label: "Ready", value: ready, icon: Radio },
     { label: "Published", value: published, icon: ArrowRight },
     { label: "Missing cover", value: missingCover, icon: FileWarning },
-    { label: "Missing short", value: missingShort, icon: FileWarning },
-    { label: "Ready for YouTube", value: readyYoutube, icon: Radio },
-    { label: "Ready for website", value: readyWebsite, icon: ArrowRight },
+    { label: "Missing full audio", value: missingFullAudio, icon: FileAudio },
+    { label: "Missing short audio", value: missingShortAudio, icon: FileAudio },
+    { label: "Ready for shorts", value: readyShorts, icon: Radio },
+    { label: "Ready for full publish", value: readyFull, icon: ArrowRight },
     { label: "Fully publishable", value: fullyPublishable, icon: Sparkles },
-    { label: "Missing metadata", value: missingMetadata, icon: FileWarning },
     { label: "AI drafts", value: aiDrafts, icon: Sparkles },
     { label: "Playlists", value: playlistsCount, icon: ListPlus }
   ];
 
   return (
     <>
-      <PageHeading title="Dashboard" subtitle="A quiet command center for songs, shorts, playlists, and publishing readiness." />
+      <PageHeading title="Dashboard" subtitle="A quiet command center for songs, assets, publishing, and readiness." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <Card key={stat.label}>
@@ -76,11 +78,10 @@ export default async function DashboardPage() {
             {[
               ["/songs/new", "New Song"],
               ["/playlists", "New Playlist"],
-              ["/songs?status=DRAFT", "View Drafts"],
               ["/workflow", "Missing Assets"],
-              ["/songs?status=READY", "Ready to Publish"]
+              ["/workflow", "Ready to Publish"]
             ].map(([href, label]) => (
-              <Link key={href} href={href} className="flex items-center justify-between rounded-lg bg-white/7 px-4 py-3 text-sm text-mist hover:bg-white/12">
+              <Link key={label} href={href} className="flex items-center justify-between rounded-lg bg-white/7 px-4 py-3 text-sm text-mist hover:bg-white/12">
                 {label}
                 <ArrowRight size={16} />
               </Link>
@@ -90,16 +91,39 @@ export default async function DashboardPage() {
       </div>
 
       <Card className="mt-6">
+        <CardTitle title="Recent Activity" eyebrow="uploads and publishes" />
+        <div className="grid gap-4 md:grid-cols-2">
+          <ActivityList
+            title="Recent Uploads"
+            items={recentAssets.map((asset) => ({
+              href: asset.songId ? `/songs/${asset.songId}` : "/songs",
+              title: asset.title,
+              meta: `${asset.type.replaceAll("_", " ")} - ${asset.song?.title || "Unassigned"}`
+            }))}
+          />
+          <ActivityList
+            title="Recently Published"
+            items={recentPublishes.map((event) => ({
+              href: `/songs/${event.songId}`,
+              title: event.song.title,
+              meta: `${event.platform} - ${event.contentType.replaceAll("_", " ")} - ${dateLabel(event.publishedAt)}`
+            }))}
+          />
+        </div>
+      </Card>
+
+      <Card className="mt-6">
         <CardTitle title="Recently Updated" eyebrow="Still breathing" />
         <SongList songs={recentUpdated} />
       </Card>
 
       <Card className="mt-6">
         <CardTitle title="Needs Attention" eyebrow="quiet blockers" />
-        <div className="grid gap-4 md:grid-cols-3">
-          <AttentionList title="Missing Short Version" songs={reports.filter((item) => !item.readiness.hasShortVersion).map((item) => item.song).slice(0, 5)} />
+        <div className="grid gap-4 md:grid-cols-4">
           <AttentionList title="Missing Cover Art" songs={reports.filter((item) => !item.readiness.hasCoverArt).map((item) => item.song).slice(0, 5)} />
-          <AttentionList title="Stale Drafts" songs={staleDrafts} />
+          <AttentionList title="Missing Full Audio" songs={reports.filter((item) => !item.song.assets.some((asset) => asset.type === AssetType.AUDIO_FULL)).map((item) => item.song).slice(0, 5)} />
+          <AttentionList title="Missing Short Audio" songs={reports.filter((item) => !item.song.assets.some((asset) => asset.type === AssetType.AUDIO_SHORT)).map((item) => item.song).slice(0, 5)} />
+          <AttentionList title="No Publish Event" songs={staleNoPublish} />
         </div>
       </Card>
     </>
@@ -116,7 +140,7 @@ function SongList({ songs }: { songs: DashboardSong[] }) {
         <Link key={song.id} href={`/songs/${song.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
           <div>
             <p className="font-medium text-white">{song.title}</p>
-            <p className="text-sm text-mist/55">{song.theme || "No theme"} · {dateLabel(song.updatedAt)}</p>
+            <p className="text-sm text-mist/55">{song.theme || "No theme"} - {dateLabel(song.updatedAt)}</p>
           </div>
           <StatusBadge status={song.status} />
         </Link>
@@ -139,6 +163,26 @@ function AttentionList({ title, songs }: { title: string; songs: DashboardSong[]
         </div>
       ) : (
         <p className="text-sm text-mist/50">Nothing waiting here.</p>
+      )}
+    </div>
+  );
+}
+
+function ActivityList({ title, items }: { title: string; items: Array<{ href: string; title: string; meta: string }> }) {
+  return (
+    <div className="rounded-lg bg-white/5 p-4">
+      <p className="mb-2 text-sm font-semibold text-white">{title}</p>
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <Link key={`${item.href}-${item.title}-${item.meta}`} href={item.href} className="block">
+              <p className="text-sm text-mist hover:text-rose">{item.title}</p>
+              <p className="text-xs text-mist/45">{item.meta}</p>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-mist/50">No activity yet.</p>
       )}
     </div>
   );

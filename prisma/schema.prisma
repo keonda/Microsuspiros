@@ -28,6 +28,29 @@ enum AssetType {
   AUDIO_SHORT
   VIDEO_SHORT
   VIDEO_FULL
+  LYRICS_DOC
+  OTHER
+}
+
+enum AssetStorageType {
+  LOCAL
+  EXTERNAL_URL
+}
+
+enum PublishPlatform {
+  YOUTUBE
+  WEBSITE
+  WHATSAPP
+  INSTAGRAM
+  TIKTOK
+  OTHER
+}
+
+enum PublishContentType {
+  FULL_SONG
+  SHORT
+  PLAYLIST
+  EXCERPT
   OTHER
 }
 
@@ -68,6 +91,7 @@ model Song {
   playlistSongs      PlaylistSong[]
   assets             Asset[]
   aiGenerationLogs   AIGenerationLog[]
+  publishEvents      PublishEvent[]
 
   @@index([status])
   @@index([updatedAt])
@@ -109,17 +133,25 @@ model PlaylistSong {
 }
 
 model Asset {
-  id        String    @id @default(cuid())
-  songId    String
-  type      AssetType @default(OTHER)
-  title     String
-  url       String?
-  notes     String?
-  createdAt DateTime  @default(now())
-  song      Song      @relation(fields: [songId], references: [id], onDelete: Cascade)
+  id          String           @id @default(cuid())
+  songId      String?
+  type        AssetType        @default(OTHER)
+  storageType AssetStorageType @default(EXTERNAL_URL)
+  title       String
+  fileName    String?
+  mimeType    String?
+  fileSize    Int?
+  path        String?
+  url         String?
+  notes       String?
+  isPrimary   Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  song        Song?            @relation(fields: [songId], references: [id], onDelete: Cascade)
 
   @@index([songId])
   @@index([type])
+  @@index([createdAt])
 }
 
 model AIGenerationLog {
@@ -136,4 +168,20 @@ model AIGenerationLog {
   @@index([songId])
   @@index([kind])
   @@index([createdAt])
+}
+
+model PublishEvent {
+  id          String             @id @default(cuid())
+  songId      String
+  platform    PublishPlatform    @default(OTHER)
+  contentType PublishContentType @default(OTHER)
+  publishedAt DateTime           @default(now())
+  url         String?
+  notes       String?
+  createdAt   DateTime           @default(now())
+  song        Song               @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@index([songId])
+  @@index([platform])
+  @@index([publishedAt])
 }

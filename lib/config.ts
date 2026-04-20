@@ -1,4 +1,5 @@
 export type AIProvider = "mock" | "groq";
+export type StorageDriver = "local";
 
 function clean(value: string | undefined) {
   const trimmed = value?.trim() ?? "";
@@ -13,12 +14,26 @@ export function appConfig() {
     baseUrl: clean(process.env.BASE_URL),
     aiProvider: provider === "groq" ? "groq" : "mock",
     groqApiKey: clean(process.env.GROQ_API_KEY),
-    groqModel: clean(process.env.GROQ_MODEL) || "llama-3.1-8b-instant"
+    groqModel: clean(process.env.GROQ_MODEL) || "llama-3.1-8b-instant",
+    storageDriver: "local",
+    uploadDir: clean(process.env.UPLOAD_DIR) || "public/uploads",
+    s3Bucket: clean(process.env.S3_BUCKET),
+    s3Region: clean(process.env.S3_REGION),
+    s3Endpoint: clean(process.env.S3_ENDPOINT),
+    s3AccessKey: clean(process.env.S3_ACCESS_KEY),
+    s3SecretKey: clean(process.env.S3_SECRET_KEY)
   } satisfies {
     appName: string;
     baseUrl: string;
     aiProvider: AIProvider;
     groqApiKey: string;
     groqModel: string;
+    storageDriver: StorageDriver;
+    uploadDir: string;
+    s3Bucket: string;
+    s3Region: string;
+    s3Endpoint: string;
+    s3AccessKey: string;
+    s3SecretKey: string;
   };
 }

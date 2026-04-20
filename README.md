@@ -154,6 +154,53 @@ npm run prisma:generate
 npx prisma migrate deploy
 ```
 
+## Assets, Uploads, And Publish History
+
+Phase 3 adds song asset management and manual publish history.
+
+Assets can be:
+
+- cover art
+- full audio
+- short audio
+- video
+- lyrics documents
+- external reference URLs
+
+Local uploads are stored under:
+
+```bash
+UPLOAD_DIR="public/uploads"
+STORAGE_DRIVER="local"
+```
+
+For Coolify, mount a persistent volume to the upload directory so uploaded files survive rebuilds/redeploys. A practical mount target is:
+
+```bash
+/app/public/uploads
+```
+
+The app currently implements local storage only. These env vars are reserved for future S3/R2-compatible storage:
+
+```bash
+S3_BUCKET=""
+S3_REGION=""
+S3_ENDPOINT=""
+S3_ACCESS_KEY=""
+S3_SECRET_KEY=""
+```
+
+Publish history is logged from each song page and tracks platform, content type, URL, notes, and publish date. You can use it for YouTube, website, WhatsApp, Instagram, TikTok, and other manual publishing events.
+
+## Phase 3 Migration
+
+Phase 3 extends `Asset`, adds local/external storage metadata, and creates `PublishEvent`. After pulling this version, run:
+
+```bash
+npm run prisma:generate
+npx prisma migrate deploy
+```
+
 ## Auth
 
 The app includes a simple env-controlled login gate. It stays disabled until all three variables are set:
