@@ -2,6 +2,14 @@ export type AIProvider = "mock" | "groq";
 export type StorageDriver = "local";
 export type DashboardPreset = "full" | "content" | "release" | "minimal";
 
+function dashboardPreset(value: string | undefined): DashboardPreset {
+  const cleaned = clean(value).toLowerCase();
+  if (cleaned === "content" || cleaned === "release" || cleaned === "minimal" || cleaned === "full") {
+    return cleaned;
+  }
+  return "full";
+}
+
 function bool(value: string | undefined, fallback = false) {
   const cleaned = clean(value).toLowerCase();
   if (!cleaned) return fallback;
@@ -32,7 +40,7 @@ export function appConfig() {
     defaultTimezone: clean(process.env.DEFAULT_TIMEZONE) || "America/Los_Angeles",
     releaseQueueStaleDays: Number(clean(process.env.RELEASE_QUEUE_STALE_DAYS)) || 21,
     releaseQueueRecentDays: Number(clean(process.env.RELEASE_QUEUE_RECENT_DAYS)) || 7,
-    dashboardDefaultPreset: (clean(process.env.DASHBOARD_DEFAULT_PRESET).toLowerCase() as DashboardPreset) || "full",
+    dashboardDefaultPreset: dashboardPreset(process.env.DASHBOARD_DEFAULT_PRESET),
     youtubeSyncEnabled: bool(process.env.YOUTUBE_SYNC_ENABLED),
     youtubeApiKey: clean(process.env.YOUTUBE_API_KEY),
     youtubeChannelId: clean(process.env.YOUTUBE_CHANNEL_ID),

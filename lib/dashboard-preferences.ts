@@ -30,15 +30,23 @@ const presetMap: Record<DashboardPreset, DashboardSectionId[]> = {
   minimal: ["stats", "queue", "quick-actions"]
 };
 
+function normalizePreset(value: unknown): DashboardPreset {
+  if (value === "content" || value === "release" || value === "minimal" || value === "full") {
+    return value;
+  }
+  return "full";
+}
+
 export function dashboardPresetSections(preset: DashboardPreset) {
-  return presetMap[preset];
+  return presetMap[normalizePreset(preset)];
 }
 
 export function defaultDashboardPreferences(preset: DashboardPreset = "full"): DashboardPreferences {
+  const normalizedPreset = normalizePreset(preset);
   return {
-    preset,
+    preset: normalizedPreset,
     compact: false,
-    enabledSections: dashboardPresetSections(preset),
+    enabledSections: dashboardPresetSections(normalizedPreset),
     collapsedSections: []
   };
 }
@@ -48,7 +56,7 @@ export function resolveDashboardPreferences(value: Prisma.JsonValue | null | und
   if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
 
   const record = value as Record<string, unknown>;
-  const preset = typeof record.preset === "string" && record.preset in presetMap ? record.preset as DashboardPreset : defaults.preset;
+  const preset = typeof record.preset === "string" ? normalizePreset(record.preset) : defaults.preset;
   const enabledSections = Array.isArray(record.enabledSections)
     ? record.enabledSections.filter((item): item is DashboardSectionId => typeof item === "string" && dashboardSectionIds.includes(item as DashboardSectionId))
     : dashboardPresetSections(preset);
@@ -65,9 +73,9 @@ export function resolveDashboardPreferences(value: Prisma.JsonValue | null | und
 }
 
 export function dashboardSectionEnabled(preferences: DashboardPreferences, sectionId: DashboardSectionId) {
-  return preferences.enabledSections.includes(sectionId);
+  return (preferences.enabledSections || []).includes(sectionId);
 }
 
 export function dashboardSectionCollapsed(preferences: DashboardPreferences, sectionId: DashboardSectionId) {
-  return preferences.collapsedSections.includes(sectionId);
+  return (preferences.collapsedSections || []).includes(sectionId);
 }
