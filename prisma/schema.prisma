@@ -88,6 +88,13 @@ enum ScheduledReleaseStatus {
   CANCELED
 }
 
+enum ExternalSyncStatus {
+  NONE
+  LINKED
+  SYNCED
+  ERROR
+}
+
 enum AIGenerationKind {
   YOUTUBE_TITLE
   YOUTUBE_DESCRIPTION
@@ -128,6 +135,7 @@ model Song {
   publishEvents      PublishEvent[]
   campaignItems      CampaignItem[]
   scheduledReleases  ScheduledRelease[]
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@index([status])
   @@index([updatedAt])
@@ -215,13 +223,22 @@ model PublishEvent {
   contentType PublishContentType @default(OTHER)
   publishedAt DateTime           @default(now())
   url         String?
+  externalId  String?
+  externalUrl String?
+  thumbnailUrl String?
+  syncStatus  ExternalSyncStatus @default(NONE)
+  lastSyncedAt DateTime?
+  syncError   String?
   notes       String?
   createdAt   DateTime           @default(now())
   song        Song               @relation(fields: [songId], references: [id], onDelete: Cascade)
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@index([songId])
   @@index([platform])
   @@index([publishedAt])
+  @@index([externalId])
+  @@index([syncStatus])
 }
 
 model ReleaseCampaign {
@@ -291,4 +308,39 @@ model ScheduledRelease {
   @@index([contentType])
   @@index([status])
   @@index([scheduledFor])
+}
+
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String?
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AnalyticsSnapshot {
+  id             String          @id @default(cuid())
+  songId         String?
+  publishEventId String?
+  platform       PublishPlatform @default(OTHER)
+  snapshotDate   DateTime
+  views          Int?
+  likes          Int?
+  comments       Int?
+  shares         Int?
+  watchTime      Int?
+  ctr            Float?
+  retention      Float?
+  rawJson        Json?
+  createdAt      DateTime        @default(now())
+  song           Song?           @relation(fields: [songId], references: [id], onDelete: SetNull)
+  publishEvent   PublishEvent?   @relation(fields: [publishEventId], references: [id], onDelete: SetNull)
+
+  @@index([songId])
+  @@index([publishEventId])
+  @@index([platform])
+  @@index([snapshotDate])
 }

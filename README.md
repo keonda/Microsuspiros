@@ -23,6 +23,8 @@ A self-hosted Next.js admin panel for managing MicroSuspiros songs, suspiro shor
 - Mock AI metadata generation in `lib/ai.ts`, structured for future Groq integration
 - Release campaigns, publishing calendar, and rule-based release queue recommendations
 - Manual scheduling for YouTube, website, shorts, playlists, teasers, and campaign moments
+- Dashboard customization with presets, compact mode, collapsible sections, and saved preferences
+- Optional integration foundations for YouTube, website sync checks, and analytics snapshots
 - Prisma schema, migration, and seed data with original Spanish placeholder content
 
 ## Local Setup
@@ -91,6 +93,8 @@ The Prisma schema includes:
 - `ReleaseCampaign`
 - `CampaignItem`
 - `ScheduledRelease`
+- `UserPreference`
+- `AnalyticsSnapshot`
 
 Run `npm run prisma:migrate` during local development. In production, the `start` script applies pending migrations with `prisma migrate deploy` before starting Next.js.
 
@@ -224,6 +228,7 @@ Release queue behavior can be tuned with:
 DEFAULT_TIMEZONE="America/Los_Angeles"
 RELEASE_QUEUE_STALE_DAYS="30"
 RELEASE_QUEUE_RECENT_DAYS="10"
+DASHBOARD_DEFAULT_PRESET="full"
 ```
 
 The recommendation engine is rule-based and lives in:
@@ -238,6 +243,91 @@ It does not require Groq or any external API.
 ## Phase 4 Migration
 
 Phase 4 adds `ReleaseCampaign`, `CampaignItem`, and `ScheduledRelease`, plus a `TEASER` content type for scheduled releases. After pulling this version, run:
+
+```bash
+npm run prisma:generate
+npx prisma migrate deploy
+```
+
+## Dashboard Customization
+
+Phase 5 adds saved dashboard preferences for calmer working modes.
+
+Available presets:
+
+- `Full`
+- `Content Focus`
+- `Release Focus`
+- `Minimal`
+
+The dashboard customizer lets you:
+
+- hide or show major dashboard sections
+- start sections collapsed
+- switch compact density on or off
+- save a quieter default view for local admin mode
+
+Preferences are stored in `UserPreference` under a global dashboard key, so the app still works even without a full user system.
+
+## Integrations And Sync Foundations
+
+Phase 5 adds optional foundations for external publishing and analytics.
+
+Environment variables:
+
+```bash
+YOUTUBE_SYNC_ENABLED="false"
+YOUTUBE_API_KEY=""
+YOUTUBE_CHANNEL_ID=""
+WEBSITE_SYNC_ENABLED="false"
+WEBSITE_BASE_URL=""
+WEBSITE_API_URL=""
+WEBSITE_API_KEY=""
+ANALYTICS_IMPORT_ENABLED="true"
+ANALYTICS_SOURCE="manual"
+SYNC_TIMEOUT_MS="7000"
+```
+
+Behavior:
+
+- If an integration is disabled, the app still works normally.
+- If YouTube sync is enabled, publish events can normalize YouTube URLs, extract video IDs, and optionally fetch basic video metadata.
+- If website sync is enabled, website publish events can store richer external IDs and run a simple sync check against a configured endpoint.
+- If analytics import is enabled, manual analytics entry is available immediately and future API imports can plug into the same model.
+- All sync failures are soft errors: the page continues working and sync state is recorded instead of crashing the app.
+
+The integrations status page lives at:
+
+```bash
+/integrations
+```
+
+## Analytics Snapshots
+
+Analytics snapshots store lightweight performance moments for songs and publish events:
+
+- platform
+- snapshot date
+- views
+- likes
+- comments
+- shares
+- watch time
+- CTR
+- retention
+
+This phase ships manual entry on song pages, plus concise performance summaries on the dashboard and campaign pages.
+
+## Phase 5 Migration
+
+Phase 5 adds:
+
+- `ExternalSyncStatus`
+- richer `PublishEvent` sync fields
+- `UserPreference`
+- `AnalyticsSnapshot`
+
+After pulling this version, run:
 
 ```bash
 npm run prisma:generate

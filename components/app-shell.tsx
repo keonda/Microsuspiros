@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpenText, CalendarDays, Flag, Home, ListMusic, Sparkles, Workflow } from "lucide-react";
+import { BookOpenText, CalendarDays, Flag, Home, ListMusic, PlugZap, Sparkles, Workflow } from "lucide-react";
 import { isAuthConfigured } from "@/lib/auth";
 
 const nav = [
@@ -9,7 +9,8 @@ const nav = [
   { href: "/campaigns", label: "Campaigns", icon: Flag },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/queue", label: "Queue", icon: Sparkles },
-  { href: "/workflow", label: "Workflow", icon: Workflow }
+  { href: "/workflow", label: "Workflow", icon: Workflow },
+  { href: "/integrations", label: "Integrations", icon: PlugZap }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

@@ -2,11 +2,14 @@ import { CampaignItemType, PublishContentType, PublishPlatform, ReleaseCampaignG
 import { notFound } from "next/navigation";
 import { addCampaignItem, markScheduledReleasePublished, scheduleRelease, updateCampaign } from "@/actions/release-actions";
 import { CopyButton } from "@/components/copy-button";
+import { DownloadLink } from "@/components/download-link";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { buildCampaignExportPacket } from "@/lib/export-packets";
 import { inputClass } from "@/components/ui/field";
 import { dateLabel } from "@/lib/format";
+import { formatMetric } from "@/lib/integrations/analytics";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +20,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     prisma.releaseCampaign.findUnique({
       where: { id },
       include: {
-        items: { include: { song: true, playlist: true }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] },
+        items: { include: { song: { include: { tags: true, publishEvents: true, analyticsSnapshots: true } }, playlist: true }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }] },
         scheduledReleases: { include: { song: true, playlist: true }, orderBy: { scheduledFor: "asc" } }
       }
     }),
@@ -26,13 +29,9 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   ]);
   if (!campaign) notFound();
 
-  const packet = JSON.stringify({
-    title: campaign.title,
-    status: campaign.status,
-    goal: campaign.goal,
-    items: campaign.items.map((item) => ({ type: item.itemType, title: item.title || item.song?.title || item.playlist?.title, priority: item.priority })),
-    schedule: campaign.scheduledReleases.map((release) => ({ title: release.title, platform: release.platform, contentType: release.contentType, scheduledFor: release.scheduledFor }))
-  }, null, 2);
+  const packet = JSON.stringify(buildCampaignExportPacket(campaign), null, 2);
+  const linkedPublishEvents = campaign.items.flatMap((item) => item.song?.publishEvents || []);
+  const recentViews = campaign.items.reduce((sum, item) => sum + (item.song?.analyticsSnapshots.sort((a, b) => b.snapshotDate.getTime() - a.snapshotDate.getTime())[0]?.views || 0), 0);
 
   return (
     <>
@@ -51,6 +50,17 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               <textarea name="notes" defaultValue={campaign.notes || ""} rows={3} className={inputClass()} />
               <Button type="submit">Save campaign</Button>
             </form>
+          </Card>
+          <Card>
+            <CardTitle title="Performance Pulse" />
+            <div className="space-y-2 text-sm text-mist/70">
+              <p>Linked publish events: {linkedPublishEvents.length}</p>
+              <p>Scheduled releases: {campaign.scheduledReleases.length}</p>
+              <p>Recent views across linked songs: {formatMetric(recentViews)}</p>
+            </div>
+            <div className="mt-3">
+              <DownloadLink label="Download packet" filename={`${campaign.slug}-campaign-packet.json`} content={packet} />
+            </div>
           </Card>
           <Card>
             <CardTitle title="Add Item" />
@@ -73,6 +83,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                 <div key={item.id} className="rounded-lg bg-white/5 p-3">
                   <p className="font-medium text-white">{item.title || item.song?.title || item.playlist?.title || "Untitled item"}</p>
                   <p className="text-xs text-gold">{item.itemType.replaceAll("_", " ")} - priority {item.priority}</p>
+                  {item.song?.analyticsSnapshots.length ? (
+                    <p className="mt-2 text-xs text-mist/55">
+                      Latest views {formatMetric(item.song.analyticsSnapshots.sort((a, b) => b.snapshotDate.getTime() - a.snapshotDate.getTime())[0]?.views || 0)}
+                    </p>
+                  ) : null}
                   {item.notes ? <p className="mt-2 text-sm text-mist/60">{item.notes}</p> : null}
                 </div>
               )) : <p className="text-sm text-mist/60">No campaign items yet.</p>}

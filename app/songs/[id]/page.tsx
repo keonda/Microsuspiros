@@ -1,17 +1,22 @@
-import { AIGenerationKind, PublishContentType, PublishPlatform, ScheduledReleaseStatus, type PublishEvent } from "@prisma/client";
+import { AIGenerationKind, PublishContentType, PublishPlatform, ScheduledReleaseStatus, type AnalyticsSnapshot, type PublishEvent } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { logPublishEvent } from "@/actions/publish-actions";
+import { logPublishEvent, syncPublishEvent } from "@/actions/publish-actions";
 import { assignSongToCampaign, markScheduledReleasePublished, scheduleRelease } from "@/actions/release-actions";
+import { createAnalyticsSnapshot } from "@/actions/settings-actions";
 import { applyAIGeneration, deleteSong, duplicateSong, generateMetadata, generateSongAI, markSongReady, updateSong } from "@/actions/song-actions";
 import { AssetManager } from "@/components/asset-manager";
 import { CopyButton } from "@/components/copy-button";
+import { DownloadLink } from "@/components/download-link";
 import { PageHeading } from "@/components/page-heading";
 import { SongForm } from "@/components/song-form";
 import { Pill } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { inputClass } from "@/components/ui/field";
+import { buildSongExportPackets } from "@/lib/export-packets";
 import { dateLabel } from "@/lib/format";
+import { formatMetric, summarizeAnalytics } from "@/lib/integrations/analytics";
+import { integrationStatuses } from "@/lib/integrations";
 import { prisma } from "@/lib/prisma";
 import { songReadiness } from "@/lib/song-readiness";
 import { getPublicAssetUrl } from "@/lib/asset-utils";
@@ -22,7 +27,7 @@ export const dynamic = "force-dynamic";
 export default async function SongDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ assetError?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
-  const [song, playlists, logs, publishEvents, campaigns] = await Promise.all([
+  const [song, playlists, logs, publishEvents, campaigns, analyticsSnapshots] = await Promise.all([
     prisma.song.findUnique({
       where: { id },
       include: {
@@ -38,22 +43,15 @@ export default async function SongDetailPage({ params, searchParams }: { params:
     prisma.playlist.findMany({ orderBy: { title: "asc" } }),
     prisma.aIGenerationLog.findMany({ where: { songId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.publishEvent.findMany({ where: { songId: id }, orderBy: { publishedAt: "desc" }, take: 12 }),
-    prisma.releaseCampaign.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } })
+    prisma.releaseCampaign.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } }),
+    prisma.analyticsSnapshot.findMany({ where: { songId: id }, orderBy: { snapshotDate: "desc" }, take: 12 })
   ]);
   if (!song) notFound();
 
   const readiness = songReadiness(song);
   const recommendation = releaseRecommendation(song);
-  const publishPacket = {
-    title: song.title,
-    youtubeTitle: song.youtubeTitle,
-    youtubeDescription: song.youtubeDescription,
-    websiteExcerpt: song.websiteExcerpt,
-    shortVersion: song.shortVersion,
-    fullLyrics: song.fullLyrics,
-    tags: song.tags.map((tag) => tag.name),
-    assets: song.assets.map((asset) => ({ type: asset.type, title: asset.title, url: getPublicAssetUrl(asset) }))
-  };
+  const packets = buildSongExportPackets(song);
+  const publishPacket = packets.publishPacket;
   const textBundle = [
     song.title,
     "",
@@ -75,6 +73,8 @@ export default async function SongDetailPage({ params, searchParams }: { params:
     "Full lyrics:",
     song.fullLyrics || ""
   ].join("\n");
+  const latestAnalytics = summarizeAnalytics(analyticsSnapshots);
+  const integrationStatus = integrationStatuses();
 
   return (
     <>
@@ -101,6 +101,7 @@ export default async function SongDetailPage({ params, searchParams }: { params:
           </Card>
           <PublishingPanel songId={song.id} events={publishEvents} />
           <ReleasePlanningPanel songId={song.id} songTitle={song.title} campaigns={campaigns} campaignItems={song.campaignItems} scheduledReleases={song.scheduledReleases} />
+          <AnalyticsPanel songId={song.id} events={publishEvents} snapshots={analyticsSnapshots} />
         </div>
 
         <div className="order-1 space-y-6 xl:order-2">
@@ -177,8 +178,16 @@ export default async function SongDetailPage({ params, searchParams }: { params:
               <ExportRow label="Full lyrics" value={song.fullLyrics} />
               <ExportRow label="Text bundle" value={textBundle} />
               <ExportRow label="Publish packet JSON" value={JSON.stringify(publishPacket, null, 2)} />
+              <ExportRow label="YouTube packet JSON" value={JSON.stringify(packets.youtubePacket, null, 2)} />
+              <ExportRow label="Website packet JSON" value={JSON.stringify(packets.websitePacket, null, 2)} />
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-white/5 px-3 py-2">
+                <span className="text-sm text-mist/70">Download publish packet</span>
+                <DownloadLink label="Download" filename={`${song.slug}-publish-packet.json`} content={JSON.stringify(publishPacket, null, 2)} />
+              </div>
             </div>
           </Card>
+
+          <IntegrationPanel events={publishEvents} integrationStatus={integrationStatus} latestAnalytics={latestAnalytics} websiteUrl={song.publishEvents.find((event) => event.platform === PublishPlatform.WEBSITE)?.externalUrl || null} />
 
           <Card>
             <CardTitle title="AI History" />
@@ -250,8 +259,18 @@ function PublishingPanel({ songId, events }: { songId: string; events: PublishIt
               <p className="text-sm font-semibold text-white">{event.platform} - {event.contentType.replaceAll("_", " ")}</p>
               <p className="text-xs text-mist/50">{dateLabel(event.publishedAt)}</p>
             </div>
-            {event.url ? <a href={event.url} target="_blank" className="mt-2 inline-block text-sm text-rose hover:text-rose/80">{event.url}</a> : null}
+            {event.externalUrl || event.url ? <a href={event.externalUrl || event.url || "#"} target="_blank" className="mt-2 inline-block text-sm text-rose hover:text-rose/80">{event.externalUrl || event.url}</a> : null}
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              {event.externalId ? <Pill>{event.externalId}</Pill> : null}
+              <Pill>{event.syncStatus}</Pill>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {event.thumbnailUrl ? <img src={event.thumbnailUrl} alt="" className="mt-3 h-20 w-36 rounded-lg object-cover" /> : null}
             {event.notes ? <p className="mt-2 text-sm text-mist/60">{event.notes}</p> : null}
+            {event.syncError ? <p className="mt-2 text-xs text-red-200">{event.syncError}</p> : null}
+            <form action={syncPublishEvent.bind(null, event.id)} className="mt-3">
+              <Button type="submit" variant="secondary">Sync status</Button>
+            </form>
           </div>
         )) : <p className="rounded-lg bg-white/5 p-4 text-sm text-mist/60">No publish events yet.</p>}
       </div>
@@ -330,5 +349,86 @@ function ExportRow({ label, value }: { label: string; value: string | null }) {
       <span className="text-sm text-mist/70">{label}</span>
       <CopyButton value={value || ""} />
     </div>
+  );
+}
+
+function AnalyticsPanel({ songId, events, snapshots }: { songId: string; events: PublishItem[]; snapshots: AnalyticsSnapshot[] }) {
+  return (
+    <Card>
+      <CardTitle title="Analytics" eyebrow={`${snapshots.length} snapshots`} />
+      <form action={createAnalyticsSnapshot.bind(null, songId)} className="grid gap-3 rounded-lg bg-white/5 p-4 md:grid-cols-2">
+        <select name="platform" className={inputClass()} defaultValue={PublishPlatform.YOUTUBE}>
+          {Object.values(PublishPlatform).map((platform) => <option key={platform} value={platform}>{platform}</option>)}
+        </select>
+        <select name="publishEventId" className={inputClass()} defaultValue="">
+          <option value="">No publish event</option>
+          {events.map((event) => <option key={event.id} value={event.id}>{event.platform} - {dateLabel(event.publishedAt)}</option>)}
+        </select>
+        <input name="snapshotDate" type="date" className={inputClass()} />
+        <input name="views" type="number" min="0" className={inputClass()} placeholder="Views" />
+        <input name="likes" type="number" min="0" className={inputClass()} placeholder="Likes" />
+        <input name="comments" type="number" min="0" className={inputClass()} placeholder="Comments" />
+        <input name="shares" type="number" min="0" className={inputClass()} placeholder="Shares" />
+        <input name="watchTime" type="number" min="0" className={inputClass()} placeholder="Watch time (minutes)" />
+        <input name="ctr" type="number" min="0" step="0.01" className={inputClass()} placeholder="CTR %" />
+        <input name="retention" type="number" min="0" step="0.01" className={inputClass()} placeholder="Retention %" />
+        <Button type="submit">Save snapshot</Button>
+      </form>
+      <div className="mt-5 space-y-3">
+        {snapshots.length ? snapshots.map((snapshot) => (
+          <div key={snapshot.id} className="rounded-lg bg-white/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-white">{snapshot.platform}</p>
+              <p className="text-xs text-mist/50">{dateLabel(snapshot.snapshotDate)}</p>
+            </div>
+            <p className="mt-2 text-sm text-mist/65">
+              Views {formatMetric(snapshot.views)} · Likes {formatMetric(snapshot.likes)} · Comments {formatMetric(snapshot.comments)} · Watch time {formatMetric(snapshot.watchTime)}
+            </p>
+          </div>
+        )) : <p className="rounded-lg bg-white/5 p-4 text-sm text-mist/60">No analytics snapshots yet.</p>}
+      </div>
+    </Card>
+  );
+}
+
+function IntegrationPanel({
+  events,
+  integrationStatus,
+  latestAnalytics,
+  websiteUrl
+}: {
+  events: PublishItem[];
+  integrationStatus: ReturnType<typeof integrationStatuses>;
+  latestAnalytics: ReturnType<typeof summarizeAnalytics>;
+  websiteUrl: string | null;
+}) {
+  const youtubeEvent = events.find((event) => event.platform === PublishPlatform.YOUTUBE);
+  return (
+    <Card>
+      <CardTitle title="External Status" eyebrow="sync foundations" />
+      <div className="space-y-3">
+        <div className="rounded-lg bg-white/5 p-4">
+          <p className="text-sm font-semibold text-white">YouTube</p>
+          <p className="mt-1 text-sm text-mist/65">{youtubeEvent?.externalUrl || "No YouTube link yet."}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Pill>{youtubeEvent?.syncStatus || "NONE"}</Pill>
+            {youtubeEvent?.externalId ? <Pill>{youtubeEvent.externalId}</Pill> : null}
+          </div>
+        </div>
+        <div className="rounded-lg bg-white/5 p-4">
+          <p className="text-sm font-semibold text-white">Website</p>
+          <p className="mt-1 text-sm text-mist/65">{websiteUrl || "No website link yet."}</p>
+        </div>
+        <div className="rounded-lg bg-white/5 p-4">
+          <p className="text-sm font-semibold text-white">Latest analytics</p>
+          <p className="mt-1 text-sm text-mist/65">
+            {latestAnalytics ? `${latestAnalytics.platform} · ${formatMetric(latestAnalytics.views)} views · ${latestAnalytics.capturedAt ? dateLabel(latestAnalytics.capturedAt) : "undated"}` : "No performance snapshots yet."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {integrationStatus.map((status) => <Pill key={status.id}>{status.label}: {status.mode}</Pill>)}
+        </div>
+      </div>
+    </Card>
   );
 }

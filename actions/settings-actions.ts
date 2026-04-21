@@ -1,0 +1,83 @@
+"use server";
+
+import { PublishPlatform } from "@prisma/client";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { appConfig } from "@/lib/config";
+import { dashboardPresetSections, dashboardSectionIds, type DashboardPreset } from "@/lib/dashboard-preferences";
+import { prisma } from "@/lib/prisma";
+import { formString, formStringArray } from "@/lib/validation";
+
+function toDateOrNow(value: string) {
+  return value ? new Date(value) : new Date();
+}
+
+function toInt(value: string) {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toFloat(value: string) {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export async function saveDashboardPreferences(formData: FormData) {
+  const requestedPreset = formString(formData, "preset").toLowerCase();
+  const preset = (["full", "content", "release", "minimal"].includes(requestedPreset) ? requestedPreset : appConfig().dashboardDefaultPreset) as DashboardPreset;
+  const enabledSections = formStringArray(formData, "enabledSections").filter((section): section is (typeof dashboardSectionIds)[number] =>
+    dashboardSectionIds.includes(section as (typeof dashboardSectionIds)[number])
+  );
+  const collapsedSections = formStringArray(formData, "collapsedSections").filter((section): section is (typeof dashboardSectionIds)[number] =>
+    dashboardSectionIds.includes(section as (typeof dashboardSectionIds)[number])
+  );
+
+  await prisma.userPreference.upsert({
+    where: { key: "dashboard" },
+    update: {
+      value: {
+        preset,
+        compact: formString(formData, "compact") === "true",
+        enabledSections: enabledSections.length ? enabledSections : dashboardPresetSections(preset),
+        collapsedSections
+      }
+    },
+    create: {
+      key: "dashboard",
+      value: {
+        preset,
+        compact: formString(formData, "compact") === "true",
+        enabledSections: enabledSections.length ? enabledSections : dashboardPresetSections(preset),
+        collapsedSections
+      }
+    }
+  });
+
+  revalidatePath("/");
+  redirect("/");
+}
+
+export async function createAnalyticsSnapshot(songId: string, formData: FormData) {
+  const publishEventId = formString(formData, "publishEventId") || null;
+  await prisma.analyticsSnapshot.create({
+    data: {
+      songId,
+      publishEventId,
+      platform: (formString(formData, "platform") as PublishPlatform) || PublishPlatform.OTHER,
+      snapshotDate: toDateOrNow(formString(formData, "snapshotDate")),
+      views: toInt(formString(formData, "views")),
+      likes: toInt(formString(formData, "likes")),
+      comments: toInt(formString(formData, "comments")),
+      shares: toInt(formString(formData, "shares")),
+      watchTime: toInt(formString(formData, "watchTime")),
+      ctr: toFloat(formString(formData, "ctr")),
+      retention: toFloat(formString(formData, "retention"))
+    }
+  });
+
+  revalidatePath("/");
+  revalidatePath(`/songs/${songId}`);
+  redirect(`/songs/${songId}`);
+}
