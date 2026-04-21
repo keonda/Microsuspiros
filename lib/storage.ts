@@ -23,6 +23,15 @@ const mimePrefixes: Partial<Record<AssetType, string[]>> = {
   LYRICS_DOC: ["text/", "application/pdf", "application/vnd.openxmlformats-officedocument"]
 };
 
+const allowedExtensions: Partial<Record<AssetType, string[]>> = {
+  COVER_ART: [".jpg", ".jpeg", ".png", ".webp", ".gif"],
+  AUDIO_FULL: [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"],
+  AUDIO_SHORT: [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"],
+  VIDEO_SHORT: [".mp4", ".mov", ".webm"],
+  VIDEO_FULL: [".mp4", ".mov", ".webm"],
+  LYRICS_DOC: [".txt", ".pdf", ".docx"]
+};
+
 function safeSegment(value: string) {
   return value
     .normalize("NFD")
@@ -43,9 +52,15 @@ function folderFor(kind: AssetType) {
 export function validateUpload(file: File, kind: AssetType) {
   if (!file.size) return "Choose a file to upload.";
   if (file.size > maxSizes[kind]) return `File is too large. Limit is ${formatFileSize(maxSizes[kind])}.`;
+
+  const ext = path.extname(file.name || "").toLowerCase();
   const allowed = mimePrefixes[kind];
-  if (allowed && !allowed.some((prefix) => file.type.startsWith(prefix) || file.type === prefix)) {
-    return `Unsupported file type for ${kind.replaceAll("_", " ").toLowerCase()}.`;
+  const extAllowed = allowedExtensions[kind];
+  const mimeLooksValid = !allowed || allowed.some((prefix) => file.type.startsWith(prefix) || file.type === prefix);
+  const extensionLooksValid = !extAllowed || extAllowed.includes(ext);
+
+  if (!mimeLooksValid && !extensionLooksValid) {
+    return `Unsupported file type for ${kind.replaceAll("_", " ").toLowerCase()}. Try mp3, wav, m4a, aac, ogg, or flac for audio uploads.`;
   }
   return null;
 }

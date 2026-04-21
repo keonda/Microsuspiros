@@ -69,7 +69,7 @@ export function AssetManager({ songId, initialAssets }: { songId: string; initia
           <p className="text-sm font-semibold text-white">Upload file</p>
           <AssetTypeSelect defaultValue={AssetType.COVER_ART} />
           <input name="title" className={inputClass()} placeholder="Cover art, full mix, short audio..." />
-          <input name="file" type="file" className={inputClass()} />
+          <input name="file" type="file" className={inputClass()} accept="image/*,audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.txt,.docx" />
           <textarea name="notes" rows={2} className={inputClass()} placeholder="Notes" />
           <label className="flex items-center gap-2 text-sm text-mist/70"><input name="isPrimary" type="checkbox" /> Primary for this type</label>
           <Button type="submit">Upload asset</Button>
