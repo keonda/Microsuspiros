@@ -21,32 +21,32 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className={`${inter.variable} ${merriweather.variable} font-sans`}>
         {user ? (
           <div className="min-h-screen">
-            <header className="sticky top-0 z-40 border-b border-stone-200/70 bg-parchment/90 backdrop-blur">
+            <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--toolbar-background)] backdrop-blur">
               <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
                 <Link href="/" className="flex items-center gap-3">
-                  <span className="flex size-10 items-center justify-center rounded-lg bg-ink text-parchment">
+                  <span className="flex size-10 items-center justify-center rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)]">
                     <BookOpen className="size-5" />
                   </span>
                   <span>
-                    <span className="block font-serif text-lg font-bold leading-tight text-ink">Writer Studio</span>
-                    <span className="block text-xs text-stone-500">Private writing workspace</span>
+                    <span className="block font-serif text-lg font-bold leading-tight text-[var(--foreground)]">Writer Studio</span>
+                    <span className="block text-xs text-[var(--muted-foreground)]">Private writing workspace</span>
                   </span>
                 </Link>
-                <nav className="flex items-center gap-2 text-sm text-stone-600">
-                  <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-white sm:flex" href="/search">
+                <nav className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                  <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-[var(--muted)] hover:text-[var(--foreground)] sm:flex" href="/search">
                     <Search className="size-4" /> Search
                   </Link>
                   {user.role === "ADMIN" ? (
-                    <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-white sm:flex" href="/admin">
+                    <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-[var(--muted)] hover:text-[var(--foreground)] sm:flex" href="/admin">
                       <Shield className="size-4" /> Admin
                     </Link>
                   ) : null}
-                  <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-white sm:flex" href="/settings">
+                  <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-[var(--muted)] hover:text-[var(--foreground)] sm:flex" href="/settings">
                     <Settings className="size-4" /> Settings
                   </Link>
-                  <span className="hidden rounded-md bg-white px-3 py-2 text-stone-700 sm:inline-flex">{user.displayName}</span>
+                  <span className="hidden rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-[var(--foreground)] sm:inline-flex">{user.displayName}</span>
                   <form action={logoutAction}>
-                    <button className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-white" type="submit">
+                    <button className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-[var(--muted)] hover:text-[var(--foreground)]" type="submit">
                       <LogOut className="size-4" />
                       <span className="hidden sm:inline">Logout</span>
                     </button>

@@ -4,53 +4,264 @@
 
 :root {
   color-scheme: light;
+  --background: #f3eadf;
+  --foreground: #261f21;
+  --card: #fffaf2;
+  --card-foreground: #261f21;
+  --muted: #efe4d7;
+  --muted-foreground: #70645f;
+  --border: #decfc0;
+  --input: #fffdf8;
+  --primary: #7f625a;
+  --primary-foreground: #fffaf2;
+  --editor-background: #fffaf2;
+  --editor-foreground: #221d1f;
+  --editor-muted: #6f625d;
+  --editor-selection: rgba(156, 123, 114, 0.28);
+  --sidebar-background: #f8f0e6;
+  --toolbar-background: rgba(255, 250, 242, 0.94);
+  --focus-ring: rgba(127, 98, 90, 0.34);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #171514;
+    --foreground: #efe7dc;
+    --card: #211e1c;
+    --card-foreground: #f2e9dc;
+    --muted: #2b2623;
+    --muted-foreground: #b9aca1;
+    --border: #403730;
+    --input: #24201e;
+    --primary: #d0a394;
+    --primary-foreground: #211a18;
+    --editor-background: #211f1d;
+    --editor-foreground: #f2ece2;
+    --editor-muted: #c1b4a8;
+    --editor-selection: rgba(208, 163, 148, 0.34);
+    --sidebar-background: #1c1917;
+    --toolbar-background: rgba(31, 28, 26, 0.96);
+    --focus-ring: rgba(208, 163, 148, 0.36);
+  }
 }
 
 body {
   min-height: 100vh;
-  background: #f6f0e7;
-  color: #241f25;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 input,
 select,
 textarea {
-  color: #241f25;
+  background: var(--input);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.8;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  outline-color: var(--focus-ring);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(156, 123, 114, 0.25);
+  background: var(--editor-selection);
+}
+
+body.writer-focus header,
+body.writer-focus .project-sidebar {
+  display: none;
+}
+
+body.writer-focus .project-layout {
+  display: block;
+}
+
+body.writer-focus {
+  background: var(--editor-shell-background, var(--background));
+}
+
+.writer-editor-shell {
+  --editor-shell-background: #f1e8dc;
+  --editor-background: #fffaf2;
+  --editor-foreground: #241f25;
+  --editor-muted: #70645f;
+  --editor-border: #dfd0bf;
+  --editor-selection: rgba(156, 123, 114, 0.28);
+  --toolbar-background: rgba(255, 250, 242, 0.94);
+  --sidebar-background: #fbf3e8;
+  background: var(--editor-shell-background);
+  color: var(--editor-foreground);
+}
+
+.writer-editor-shell[data-paper-theme="sepia"] {
+  --editor-shell-background: #eadbc6;
+  --editor-background: #f8edd9;
+  --editor-foreground: #2b211b;
+  --editor-muted: #735f51;
+  --editor-border: #d2bda1;
+  --editor-selection: rgba(142, 100, 76, 0.3);
+  --toolbar-background: rgba(248, 237, 217, 0.94);
+  --sidebar-background: #efe0c9;
+}
+
+.writer-editor-shell[data-paper-theme="dark"] {
+  --editor-shell-background: #1d1b19;
+  --editor-background: #27231f;
+  --editor-foreground: #f0e7db;
+  --editor-muted: #bcaea0;
+  --editor-border: #473d34;
+  --editor-selection: rgba(211, 166, 135, 0.34);
+  --toolbar-background: rgba(37, 33, 29, 0.96);
+  --sidebar-background: #231f1c;
+}
+
+.writer-editor-shell[data-paper-theme="midnight"] {
+  --editor-shell-background: #12161a;
+  --editor-background: #191f24;
+  --editor-foreground: #e8edf0;
+  --editor-muted: #a9b4ba;
+  --editor-border: #33414a;
+  --editor-selection: rgba(126, 169, 190, 0.38);
+  --toolbar-background: rgba(24, 31, 36, 0.96);
+  --sidebar-background: #161c21;
+}
+
+.writer-toolbar {
+  background: var(--toolbar-background);
+  border-color: var(--editor-border);
+  color: var(--editor-foreground);
+}
+
+.writer-paper {
+  background: var(--editor-background);
+  border: 1px solid var(--editor-border);
+  box-shadow: 0 24px 80px rgba(51, 37, 25, 0.08);
+}
+
+.writer-panel {
+  background: var(--sidebar-background);
+  border-color: var(--editor-border);
+  color: var(--editor-foreground);
+}
+
+.writer-editor-shell[data-paper-theme="dark"] .writer-paper,
+.writer-editor-shell[data-paper-theme="midnight"] .writer-paper {
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
 }
 
 .prose-editor .ProseMirror {
-  min-height: 58vh;
+  min-height: 68vh;
   outline: none;
   font-family: var(--font-serif);
-  font-size: 1.08rem;
-  line-height: 1.9;
+  font-size: 1.1rem;
+  line-height: 2;
+  color: var(--editor-foreground);
+  caret-color: var(--primary);
+}
+
+.prose-editor .ProseMirror-focused {
+  outline: none;
+}
+
+.prose-editor .ProseMirror p {
+  color: var(--editor-foreground);
+  margin: 0 0 1.15em;
 }
 
 .prose-editor .ProseMirror h1,
 .prose-editor .ProseMirror h2,
 .prose-editor .ProseMirror h3 {
+  color: var(--editor-foreground);
+  font-family: var(--font-serif);
+  font-weight: 700;
   line-height: 1.25;
   margin: 1.4em 0 0.5em;
 }
 
+.prose-editor .ProseMirror h1 {
+  font-size: 2.1rem;
+}
+
+.prose-editor .ProseMirror h2 {
+  font-size: 1.65rem;
+}
+
+.prose-editor .ProseMirror h3 {
+  font-size: 1.32rem;
+}
+
 .prose-editor .ProseMirror blockquote {
-  border-left: 3px solid #9c7b72;
-  color: #61565b;
+  border-left: 3px solid var(--primary);
+  color: var(--editor-muted);
   margin-left: 0;
   padding-left: 1rem;
 }
 
 .prose-editor .ProseMirror ul,
 .prose-editor .ProseMirror ol {
+  color: var(--editor-foreground);
+  margin: 0 0 1.15em;
   padding-left: 1.5rem;
+}
+
+.prose-editor .ProseMirror li {
+  color: var(--editor-foreground);
+  margin: 0.3em 0;
+}
+
+.prose-editor .ProseMirror strong {
+  color: var(--editor-foreground);
+  font-weight: 700;
+}
+
+.prose-editor .ProseMirror em {
+  color: var(--editor-foreground);
+}
+
+.prose-editor .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.prose-editor .ProseMirror code {
+  border-radius: 0.35rem;
+  background: var(--muted);
+  color: var(--editor-foreground);
+  padding: 0.12rem 0.3rem;
+}
+
+.prose-editor .ProseMirror pre {
+  overflow-x: auto;
+  border-radius: 0.6rem;
+  border: 1px solid var(--editor-border);
+  background: var(--muted);
+  color: var(--editor-foreground);
+  padding: 1rem;
 }
 
 .prose-editor .ProseMirror hr {
   border: 0;
-  border-top: 1px solid #ded2c5;
+  border-top: 1px solid var(--editor-border);
   margin: 2rem 0;
+}
+
+.prose-editor .ProseMirror ::selection {
+  background: var(--editor-selection);
 }

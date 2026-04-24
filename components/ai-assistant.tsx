@@ -63,23 +63,23 @@ export function AIAssistant({
     <div className="space-y-3">
       <div className="grid gap-2">
         {commands.map(([value, label]) => (
-          <button key={value} className="flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-left text-sm hover:bg-parchment" onClick={() => void run(value)} type="button">
+          <button key={value} className="flex items-center gap-2 rounded-md border border-[var(--editor-border)] bg-[var(--editor-background)] px-3 py-2 text-left text-sm text-[var(--editor-foreground)] hover:bg-[var(--muted)]" onClick={() => void run(value)} type="button">
             <Wand2 className="size-4" /> {label}
           </button>
         ))}
       </div>
-      <textarea className="min-h-24 w-full rounded-md border border-stone-200 px-3 py-2 text-sm" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask something specific..." />
-      <button className="flex w-full items-center justify-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-parchment" onClick={() => void run("chat")} type="button">
+      <textarea className="min-h-24 w-full rounded-md border border-[var(--editor-border)] bg-[var(--editor-background)] px-3 py-2 text-sm text-[var(--editor-foreground)] placeholder:text-[var(--editor-muted)]" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask something specific..." />
+      <button className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]" onClick={() => void run("chat")} type="button">
         <Send className="size-4" /> Send
       </button>
-      {status ? <p className="text-xs text-stone-500">{status}</p> : null}
+      {status ? <p className="text-xs text-[var(--editor-muted)]">{status}</p> : null}
       {response ? (
-        <div className="rounded-lg bg-parchment p-3 text-sm leading-6">
+        <div className="rounded-lg border border-[var(--editor-border)] bg-[var(--editor-background)] p-3 text-sm leading-6 text-[var(--editor-foreground)]">
           <pre className="whitespace-pre-wrap font-sans">{response}</pre>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className="rounded-md bg-white px-3 py-2 text-xs" onClick={() => void navigator.clipboard.writeText(response)} type="button"><Copy className="mr-1 inline size-3" />Copy</button>
-            {onInsert ? <button className="rounded-md bg-white px-3 py-2 text-xs" onClick={() => onInsert(response)} type="button">Insert below selection</button> : null}
-            <button className="rounded-md bg-white px-3 py-2 text-xs" onClick={() => void saveAsNote()} type="button"><FilePlus className="mr-1 inline size-3" />Save as story note</button>
+            <button className="rounded-md border border-[var(--editor-border)] bg-[var(--muted)] px-3 py-2 text-xs" onClick={() => void navigator.clipboard.writeText(response)} type="button"><Copy className="mr-1 inline size-3" />Copy</button>
+            {onInsert ? <button className="rounded-md border border-[var(--editor-border)] bg-[var(--muted)] px-3 py-2 text-xs" onClick={() => onInsert(response)} type="button">Insert below selection</button> : null}
+            <button className="rounded-md border border-[var(--editor-border)] bg-[var(--muted)] px-3 py-2 text-xs" onClick={() => void saveAsNote()} type="button"><FilePlus className="mr-1 inline size-3" />Save as story note</button>
           </div>
         </div>
       ) : null}

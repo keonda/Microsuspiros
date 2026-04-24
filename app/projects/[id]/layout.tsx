@@ -14,7 +14,7 @@ export default async function ProjectLayout({ children, params }: { children: Re
   ]);
 
   return (
-    <main className="grid min-h-[calc(100vh-4rem)] grid-cols-1 lg:grid-cols-[300px_1fr]">
+    <main className="project-layout grid min-h-[calc(100vh-4rem)] grid-cols-1 lg:grid-cols-[300px_1fr]">
       <ProjectSidebar project={project} documents={documents} trash={trash} />
       <div className="min-w-0">{children}</div>
     </main>

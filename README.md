@@ -142,3 +142,14 @@ Future TODO:
 - split by table of contents
 - DOCX import
 - EPUB import
+
+## Visual QA Checklist
+
+- Light mode dashboard readable
+- Dark mode dashboard readable
+- Light mode editor readable
+- Dark mode editor readable
+- Focus mode readable
+- Toolbar readable
+- Inputs readable
+- Right panels readable
