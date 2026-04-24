@@ -60,10 +60,10 @@ The compose file starts the app and PostgreSQL. Uploads are persisted in the `wr
 3. Set environment variables:
    - `DATABASE_URL`
    - `BASE_URL`
-   - `UPLOAD_DIR=/app/uploads`
+   - `UPLOAD_DIR=/app/public/uploads`
    - `AUTH_COOKIE_SECURE=true` for HTTPS deployments, or `false` when testing over plain HTTP
    - `APP_ENCRYPTION_KEY` to a long random secret so stored AI API keys can be decrypted across redeploys
-4. Mount a persistent volume at `/app/uploads`.
+4. Mount a persistent volume at `/app/public/uploads`.
 5. Expose port `3000`.
 6. Deploy. The production start command runs `prisma migrate deploy` before `next start`.
 7. Register the first user in the browser, or run the seed command once with `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`.

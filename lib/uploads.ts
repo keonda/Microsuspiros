@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -15,8 +15,29 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 export function uploadsRoot() {
-  const configured = process.env.UPLOAD_DIR || "uploads";
+  const configured = process.env.UPLOAD_DIR || "public/uploads";
   return path.isAbsolute(configured) ? configured : path.join(/*turbopackIgnore: true*/ process.cwd(), configured);
+}
+
+export function uploadRootCandidates() {
+  const roots = [
+    uploadsRoot(),
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "public/uploads"),
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "uploads"),
+    "/app/public/uploads",
+    "/app/uploads"
+  ];
+  return Array.from(new Set(roots.map((root) => path.resolve(root))));
+}
+
+export async function resolveStoredUpload(relativePath: string) {
+  for (const root of uploadRootCandidates()) {
+    const absolutePath = path.resolve(root, relativePath);
+    if (!absolutePath.startsWith(root)) continue;
+    const fileStat = await stat(absolutePath).catch(() => null);
+    if (fileStat?.isFile()) return { absolutePath, fileStat };
+  }
+  return null;
 }
 
 export function validateUpload(file: File) {
