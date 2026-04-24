@@ -1,11 +1,10 @@
-import type { SongStatus } from "@prisma/client";
 import { clsx, type ClassValue } from "clsx";
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }
 
-export function statusLabel(status: SongStatus) {
+export function statusLabel(status: string) {
   return status
     .toLowerCase()
     .split("_")

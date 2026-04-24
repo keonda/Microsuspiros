@@ -344,3 +344,337 @@ model AnalyticsSnapshot {
   @@index([platform])
   @@index([snapshotDate])
 }
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ProjectStatus {
+  IDEA
+  DRAFTING
+  REVISING
+  COMPLETE
+  ARCHIVED
+}
+
+enum FolderKind {
+  MANUSCRIPT
+  STORY_NOTES
+  RESEARCH
+  BRAINSTORM
+  RESOURCES
+  TRASH
+}
+
+enum DocumentKind {
+  MANUSCRIPT
+  STORY_NOTE
+  RESEARCH
+}
+
+enum StoryNoteType {
+  CHARACTER
+  LOCATION
+  SCENE_IDEA
+  PLOT_THREAD
+  TIMELINE_NOTE
+  WORLDBUILDING
+  GENERAL
+}
+
+enum ResourceLinkType {
+  DOCUMENT
+  STORY_NOTE
+  RESEARCH_NOTE
+  BRAINSTORM_CARD
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  displayName  String
+  role         UserRole  @default(USER)
+  disabled     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions          Session[]
+  projects          Project[]
+  folders           Folder[]
+  documents         Document[]
+  storyNotes        StoryNote[]
+  researchNotes     ResearchNote[]
+  brainstormBoards  BrainstormBoard[]
+  brainstormCards   BrainstormCard[]
+  resources         Resource[]
+
+  @@index([role])
+  @@index([disabled])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  title       String
+  subtitle    String?
+  description String?
+  genre       String?
+  status      ProjectStatus @default(IDEA)
+  coverImage  String?
+  userId      String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folders           Folder[]
+  documents         Document[]
+  storyNotes        StoryNote[]
+  researchNotes     ResearchNote[]
+  brainstormBoards  BrainstormBoard[]
+  brainstormColumns BrainstormColumn[]
+  brainstormCards   BrainstormCard[]
+  resources         Resource[]
+  tags              WriterTag[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model Folder {
+  id        String     @id @default(cuid())
+  title     String
+  kind      FolderKind @default(MANUSCRIPT)
+  sortOrder Int        @default(0)
+  projectId String
+  userId    String
+  parentId  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Folder[] @relation("FolderTree")
+  documents Document[]
+
+  @@index([projectId, kind])
+  @@index([userId])
+  @@index([parentId])
+}
+
+model Document {
+  id          String       @id @default(cuid())
+  title       String
+  kind        DocumentKind @default(MANUSCRIPT)
+  contentJson Json?
+  contentHtml String       @default("")
+  plainText   String       @default("")
+  wordCount   Int          @default(0)
+  charCount   Int          @default(0)
+  sortOrder   Int          @default(0)
+  isTrash     Boolean      @default(false)
+  folderId    String?
+  projectId   String
+  userId      String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  folder   Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags     WriterTag[] @relation("DocumentTags")
+  resourceLinks ResourceLink[] @relation("DocumentResourceLinks")
+
+  @@index([projectId, kind, sortOrder])
+  @@index([userId])
+  @@index([isTrash])
+}
+
+model StoryNote {
+  id          String        @id @default(cuid())
+  title       String
+  type        StoryNoteType @default(GENERAL)
+  body        String        @default("")
+  tagsText    String        @default("")
+  linkedDocumentIds String[] @default([])
+  projectId   String
+  userId      String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags    WriterTag[] @relation("StoryNoteTags")
+  resourceLinks ResourceLink[] @relation("StoryNoteResourceLinks")
+
+  @@index([projectId, type])
+  @@index([userId])
+}
+
+model ResearchNote {
+  id          String   @id @default(cuid())
+  title       String
+  sourceTitle String?
+  sourceUrl   String?
+  author      String?
+  excerpt     String?
+  summary     String   @default("")
+  personalNotes String @default("")
+  tagsText    String   @default("")
+  linkedResourceIds String[] @default([])
+  projectId   String
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags    WriterTag[] @relation("ResearchNoteTags")
+  resourceLinks ResourceLink[] @relation("ResearchNoteResourceLinks")
+
+  @@index([projectId])
+  @@index([userId])
+}
+
+model BrainstormBoard {
+  id        String   @id @default(cuid())
+  title     String
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  columns BrainstormColumn[]
+  cards   BrainstormCard[]
+
+  @@index([projectId])
+  @@index([userId])
+}
+
+model BrainstormColumn {
+  id        String   @id @default(cuid())
+  title     String
+  sortOrder Int      @default(0)
+  boardId   String
+  projectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  board   BrainstormBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cards   BrainstormCard[]
+
+  @@index([boardId, sortOrder])
+  @@index([projectId])
+}
+
+model BrainstormCard {
+  id        String   @id @default(cuid())
+  title     String
+  body      String   @default("")
+  color     String   @default("#f2d7a2")
+  tagsText  String   @default("")
+  sortOrder Int      @default(0)
+  boardId   String
+  columnId  String
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  board   BrainstormBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column  BrainstormColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags    WriterTag[]      @relation("BrainstormCardTags")
+  resourceLinks ResourceLink[] @relation("BrainstormCardResourceLinks")
+
+  @@index([boardId])
+  @@index([columnId, sortOrder])
+  @@index([projectId])
+  @@index([userId])
+}
+
+model Resource {
+  id          String   @id @default(cuid())
+  title       String
+  originalName String
+  fileName    String
+  mimeType    String
+  fileSize    Int
+  path        String
+  notes       String   @default("")
+  tagsText    String   @default("")
+  projectId   String
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags    WriterTag[] @relation("ResourceTags")
+  links   ResourceLink[]
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([mimeType])
+  @@index([createdAt])
+}
+
+model ResourceLink {
+  id          String           @id @default(cuid())
+  resourceId  String
+  linkType    ResourceLinkType
+  documentId  String?
+  storyNoteId String?
+  researchNoteId String?
+  brainstormCardId String?
+  createdAt   DateTime         @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  document Document? @relation("DocumentResourceLinks", fields: [documentId], references: [id], onDelete: Cascade)
+  storyNote StoryNote? @relation("StoryNoteResourceLinks", fields: [storyNoteId], references: [id], onDelete: Cascade)
+  researchNote ResearchNote? @relation("ResearchNoteResourceLinks", fields: [researchNoteId], references: [id], onDelete: Cascade)
+  brainstormCard BrainstormCard? @relation("BrainstormCardResourceLinks", fields: [brainstormCardId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+  @@index([linkType])
+  @@index([documentId])
+  @@index([storyNoteId])
+  @@index([researchNoteId])
+  @@index([brainstormCardId])
+}
+
+model WriterTag {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String
+  projectId String?
+  createdAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  documents Document[] @relation("DocumentTags")
+  storyNotes StoryNote[] @relation("StoryNoteTags")
+  researchNotes ResearchNote[] @relation("ResearchNoteTags")
+  brainstormCards BrainstormCard[] @relation("BrainstormCardTags")
+  resources Resource[] @relation("ResourceTags")
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+}

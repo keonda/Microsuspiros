@@ -1,43 +1,94 @@
-export const AUTH_COOKIE = "microsuspiros_admin";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { compare, hash } from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
+import { prisma } from "@/lib/prisma";
 
-function cleanEnv(value: string | undefined) {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.replace(/^['"]|['"]$/g, "");
+export const AUTH_COOKIE = "writer_studio_session";
+const SESSION_DAYS = 30;
+
+export function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
-export async function adminSessionToken() {
-  const input = `microsuspiros-admin:${adminSessionSecret()}`;
-  return hashText(input);
+export async function hashPassword(password: string) {
+  return hash(password, 12);
 }
 
-export async function hashText(input: string) {
-  const bytes = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+export async function verifyPassword(password: string, passwordHash: string) {
+  return compare(password, passwordHash);
+}
+
+export async function createSession(userId: string) {
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+
+  await prisma.session.create({
+    data: {
+      userId,
+      tokenHash: hashToken(token),
+      expiresAt
+    }
+  });
+
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: expiresAt
+  });
+}
+
+export async function destroySession() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
+  if (token) {
+    await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
+  }
+  cookieStore.delete(AUTH_COOKIE);
+}
+
+export async function currentUser() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
+  if (!token) return null;
+
+  const session = await prisma.session.findUnique({
+    where: { tokenHash: hashToken(token) },
+    include: { user: true }
+  });
+
+  if (!session || session.expiresAt < new Date() || session.user.disabled) {
+    if (session) await prisma.session.delete({ where: { id: session.id } }).catch(() => null);
+    return null;
+  }
+
+  return session.user;
+}
+
+export async function requireUser() {
+  const user = await currentUser();
+  if (!user) redirect("/login");
+  return user;
+}
+
+export async function requireAdmin() {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") redirect("/");
+  return user;
+}
+
+export async function nextRegisteredRole() {
+  const users = await prisma.user.count();
+  return users === 0 ? "ADMIN" : "USER";
 }
 
 export function isAuthConfigured() {
-  return Boolean(adminUsername() && adminPassword() && adminSessionSecret());
-}
-
-export function adminUsername() {
-  return cleanEnv(process.env.ADMIN_USERNAME);
-}
-
-export function adminPassword() {
-  return cleanEnv(process.env.ADMIN_PASSWORD);
-}
-
-export function adminSessionSecret() {
-  return cleanEnv(process.env.ADMIN_SESSION_SECRET);
-}
-
-export function secureAdminCookie() {
-  return cleanEnv(process.env.ADMIN_COOKIE_SECURE).toLowerCase() === "true";
+  return true;
 }
 
 export function authEnvHint() {
-  return "Set ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET to enable the login gate.";
+  return "Writer Studio uses database-backed accounts. Register the first user to create an admin.";
 }

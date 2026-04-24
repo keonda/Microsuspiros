@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: writer_studio
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/writer_studio?schema=public
+      BASE_URL: http://localhost:3000
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - writer-uploads:/app/uploads
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:
+  writer-uploads:
