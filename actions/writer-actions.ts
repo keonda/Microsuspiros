@@ -25,18 +25,23 @@ export async function registerAction(_: ActionState, formData: FormData): Promis
 
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check your registration details." };
 
-  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (existing) return { error: "An account with that email already exists." };
+  try {
+    const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (existing) return { error: "An account with that email already exists." };
 
-  const user = await prisma.user.create({
-    data: {
-      ...parsed.data,
-      role: await nextRegisteredRole(),
-      passwordHash: await hashPassword(parsed.data.password)
-    }
-  });
+    const user = await prisma.user.create({
+      data: {
+        ...parsed.data,
+        role: await nextRegisteredRole(),
+        passwordHash: await hashPassword(parsed.data.password)
+      }
+    });
 
-  await createSession(user.id);
+    await createSession(user.id);
+  } catch (error) {
+    console.error("Registration failed", error);
+    return { error: databaseSetupError() };
+  }
   redirect("/");
 }
 
@@ -44,12 +49,17 @@ export async function loginAction(_: ActionState, formData: FormData): Promise<A
   const parsed = z.object({ email: emailSchema, password: z.string().min(1) }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "Enter your email and password." };
 
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (!user || user.disabled || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
-    return { error: "Invalid email or password." };
-  }
+  try {
+    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (!user || user.disabled || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+      return { error: "Invalid email or password." };
+    }
 
-  await createSession(user.id);
+    await createSession(user.id);
+  } catch (error) {
+    console.error("Login failed", error);
+    return { error: databaseSetupError() };
+  }
   redirect("/");
 }
 
@@ -331,3 +341,7 @@ export async function searchEverything(userId: string, query: string) {
 // TODO: AI assistant integration should connect here as project-aware server actions.
 // TODO: Version history should snapshot document content before destructive saves.
 // TODO: Collaborative writing should replace simple ownership checks with membership/permissions.
+
+function databaseSetupError() {
+  return "The database is not ready yet. Set DATABASE_URL, start PostgreSQL, then run npm run prisma:migrate.";
+}
