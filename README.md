@@ -59,6 +59,7 @@ The compose file starts the app and PostgreSQL. Uploads are persisted in the `wr
    - `DATABASE_URL`
    - `BASE_URL`
    - `UPLOAD_DIR=/app/uploads`
+   - `AUTH_COOKIE_SECURE=true` for HTTPS deployments, or `false` when testing over plain HTTP
 4. Mount a persistent volume at `/app/uploads`.
 5. Expose port `3000`.
 6. Deploy. The production start command runs `prisma migrate deploy` before `next start`.

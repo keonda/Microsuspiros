@@ -35,7 +35,7 @@ export async function createSession(userId: string) {
   cookieStore.set(AUTH_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureSessionCookie(),
     path: "/",
     expires: expiresAt
   });
@@ -91,4 +91,11 @@ export function isAuthConfigured() {
 
 export function authEnvHint() {
   return "Writer Studio uses database-backed accounts. Register the first user to create an admin.";
+}
+
+function secureSessionCookie() {
+  const override = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "true") return true;
+  if (override === "false") return false;
+  return process.env.NODE_ENV === "production";
 }
