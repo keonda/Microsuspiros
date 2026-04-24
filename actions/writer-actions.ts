@@ -31,7 +31,8 @@ export async function registerAction(_: ActionState, formData: FormData): Promis
 
     const user = await prisma.user.create({
       data: {
-        ...parsed.data,
+        email: parsed.data.email,
+        displayName: parsed.data.displayName,
         role: await nextRegisteredRole(),
         passwordHash: await hashPassword(parsed.data.password)
       }
