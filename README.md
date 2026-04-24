@@ -24,7 +24,7 @@ Writer Studio is a private Next.js writing workspace for manuscripts, story note
 - HTML/TXT document export and combined project manuscript export
 - Simple admin user management
 - Phase 2 autosave status, version history, wiki links, backlinks, graph view, and optional Groq assistant
-- PDF import: upload a PDF, extract selectable text, preview it, and import into a manuscript document, story note, or research note
+- PDF import: upload a PDF, extract selectable text, detect likely chapters, preview/edit the split, and import one or many manuscript documents or notes
 
 ## Local Development
 
@@ -115,24 +115,30 @@ AI output never overwrites the manuscript automatically. The panel offers copy, 
 
 ## PDF Import
 
-Use `Resources -> Import PDF` to upload a PDF into a project. Writer Studio stores the original PDF as a protected downloadable resource, extracts selectable text on the server with `pdf-parse`, and shows a preview before import.
+Use `Resources -> Import PDF` or `Project -> Manuscript order -> Import from PDF` to upload a PDF into a project. Writer Studio stores the original PDF as a protected downloadable resource, extracts selectable text on the server with `pdf-parse`, and creates a PDF import session for review.
+
+The import preview shows detected chapter/section count, page count, extracted character count, confidence warnings, and editable section rows. You can rename sections, exclude sections, merge a section with the previous one, re-run detection with a manual split marker such as `Chapter`, or import the entire PDF as one item.
 
 From the preview, choose one destination:
 
-- new manuscript document
-- new story note
-- new research note
+- manuscript documents, one per selected section
+- story notes, one per selected section
+- research notes, one per selected section
 
-The extracted text is stored in the selected item, and the item is linked back to the original PDF resource. The resource records extraction status, page count, extracted text, and any extraction error.
+The extracted text is stored in the selected items, and every imported item is linked back to the original PDF resource. The resource records extraction status, page count, extracted text, and any extraction error. Import sessions also record the detected sections and imported targets, so the original PDF remains available for download and the review state can be reopened from the Resources tab.
 
 Current limits and errors:
 
 - PDF text extraction is limited to 25 MB.
-- Scanned PDFs may require OCR, which is not included yet.
+- Scanned or image-based PDFs show `This PDF appears to be scanned or image-based. OCR is not supported yet.`
 - Encrypted, unsupported, corrupt, or no-text PDFs are preserved as resources and show an extraction warning.
+- Chapter detection is regex-based and intentionally conservative; review uncertain splits before importing.
 
 Future TODO:
 
 - OCR support for scanned PDFs
-- split PDF by chapter/heading
-- import multiple documents from one PDF
+- AI-assisted chapter detection
+- automatic chapter title cleanup
+- split by table of contents
+- DOCX import
+- EPUB import

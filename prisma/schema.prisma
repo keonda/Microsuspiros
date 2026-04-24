@@ -412,6 +412,13 @@ enum ResourceExtractionStatus {
   FAILED
 }
 
+enum PdfImportStatus {
+  EXTRACTED
+  NO_TEXT
+  IMPORTED
+  FAILED
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -432,6 +439,7 @@ model User {
   brainstormBoards  BrainstormBoard[]
   brainstormCards   BrainstormCard[]
   resources         Resource[]
+  pdfImportSessions PdfImportSession[]
   aiSettings        AISettings?
 
   @@index([role])
@@ -472,6 +480,7 @@ model Project {
   brainstormCards   BrainstormCard[]
   resources         Resource[]
   tags              WriterTag[]
+  pdfImportSessions PdfImportSession[]
 
   @@index([userId])
   @@index([status])
@@ -696,11 +705,50 @@ model Resource {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   tags    WriterTag[] @relation("ResourceTags")
   links   ResourceLink[]
+  pdfImportSessions PdfImportSession[]
 
   @@index([projectId])
   @@index([userId])
   @@index([mimeType])
   @@index([createdAt])
+}
+
+model PdfImportSession {
+  id                   String          @id @default(cuid())
+  projectId            String
+  resourceId           String
+  userId               String
+  extractedText        String?
+  detectedSectionsJson Json
+  status               PdfImportStatus @default(EXTRACTED)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  project       Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  resource      Resource          @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importedItems PdfImportedItem[]
+
+  @@index([projectId])
+  @@index([resourceId])
+  @@index([userId])
+  @@index([status])
+}
+
+model PdfImportedItem {
+  id              String       @id @default(cuid())
+  importSessionId String
+  targetType      LinkableType
+  targetId        String
+  title           String
+  sortOrder       Int          @default(0)
+  createdAt       DateTime     @default(now())
+
+  importSession PdfImportSession @relation(fields: [importSessionId], references: [id], onDelete: Cascade)
+
+  @@index([importSessionId])
+  @@index([targetType, targetId])
+  @@index([sortOrder])
 }
 
 model ResourceLink {

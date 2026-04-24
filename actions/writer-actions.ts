@@ -7,7 +7,7 @@ import { Prisma, ProjectStatus, StoryNoteType } from "@prisma/client";
 import { createSession, destroySession, hashPassword, nextRegisteredRole, requireAdmin, requireUser, verifyPassword } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
 import { syncInternalLinks } from "@/lib/internal-links";
-import { extractPdfText } from "@/lib/pdf-import";
+import { applyManualSplitMarker, detectPdfSections, extractPdfText, mergeSections, type DetectedPdfSection } from "@/lib/pdf-import";
 import { prisma } from "@/lib/prisma";
 import { deleteStoredUpload, storeUpload, validateUpload } from "@/lib/uploads";
 import { escapeHtml, wordCount } from "@/lib/writer-utils";
@@ -313,7 +313,8 @@ export async function uploadPdfForImportAction(projectId: string, formData: Form
   });
 
   const extraction = await extractPdfText(stored.absolutePath, file.size);
-  await prisma.resource.update({
+  const detection = extraction.text ? detectPdfSections(extraction.text) : { sections: [], warnings: [extraction.error || "This PDF appears to be scanned or image-based. OCR is not supported yet."] };
+  const updatedResource = await prisma.resource.update({
     where: { id: resource.id },
     data: {
       extractedText: extraction.text,
@@ -322,9 +323,96 @@ export async function uploadPdfForImportAction(projectId: string, formData: Form
       pageCount: extraction.pageCount
     }
   });
+  const session = await prisma.pdfImportSession.create({
+    data: {
+      projectId,
+      resourceId: resource.id,
+      userId: user.id,
+      extractedText: extraction.text,
+      detectedSectionsJson: detection as unknown as Prisma.InputJsonValue,
+      status: updatedResource.extractionStatus === "EXTRACTED" ? "EXTRACTED" : updatedResource.extractionStatus === "NO_TEXT" ? "NO_TEXT" : "FAILED"
+    }
+  });
 
   revalidatePath(`/projects/${projectId}/resources`);
-  redirect(`/projects/${projectId}/resources?import=${resource.id}`);
+  redirect(`/projects/${projectId}/pdf-import/${session.id}`);
+}
+
+export async function rerunPdfDetectionAction(projectId: string, sessionId: string, formData: FormData) {
+  const user = await requireUser();
+  const marker = z.string().trim().max(120).parse(formData.get("manualMarker") || "");
+  const session = await prisma.pdfImportSession.findFirst({ where: { id: sessionId, projectId, userId: user.id } });
+  if (!session?.extractedText?.trim()) throw new Error("This PDF has no extracted text to split.");
+
+  const detection = marker ? applyManualSplitMarker(session.extractedText, marker) : detectPdfSections(session.extractedText);
+  await prisma.pdfImportSession.update({
+    where: { id: session.id },
+    data: { detectedSectionsJson: { ...detection, manualMarker: marker } as unknown as Prisma.InputJsonValue }
+  });
+
+  revalidatePath(`/projects/${projectId}/pdf-import/${sessionId}`);
+}
+
+export async function importPdfSectionsAction(projectId: string, sessionId: string, formData: FormData) {
+  const user = await requireUser();
+  const parsed = z
+    .object({
+      destination: z.enum(["DOCUMENT", "STORY_NOTE", "RESEARCH_NOTE"]),
+      importMode: z.enum(["sections", "single"]),
+      singleTitle: titleSchema
+    })
+    .parse({
+      destination: formData.get("destination"),
+      importMode: formData.get("importMode"),
+      singleTitle: formData.get("singleTitle")
+    });
+  const session = await prisma.pdfImportSession.findFirst({
+    where: { id: sessionId, projectId, userId: user.id },
+    include: { resource: true }
+  });
+  if (!session) throw new Error("PDF import session not found.");
+  if (!session.extractedText?.trim() || session.resource.extractionStatus !== "EXTRACTED") {
+    throw new Error(session.resource.extractionError || "This PDF has no extracted text to import.");
+  }
+
+  const detected = pdfSessionPayload(session.detectedSectionsJson).sections;
+  const selectedSections =
+    parsed.importMode === "single"
+      ? [
+          {
+            id: "single",
+            title: parsed.singleTitle,
+            startIndex: 0,
+            endIndex: session.extractedText.length,
+            text: session.extractedText,
+            confidence: 1,
+            detectedPattern: "single-document",
+            include: true
+          } satisfies DetectedPdfSection
+        ]
+      : selectedPdfSections(formData, detected);
+
+  if (!selectedSections.length) throw new Error("Choose at least one section to import.");
+
+  const created = await createImportedPdfItems({
+    projectId,
+    userId: user.id,
+    resourceId: session.resourceId,
+    resourceOriginalName: session.resource.originalName,
+    sessionId: session.id,
+    destination: parsed.destination,
+    sections: selectedSections
+  });
+
+  await prisma.pdfImportSession.update({ where: { id: session.id }, data: { status: "IMPORTED" } });
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/resources`);
+  revalidatePath(`/projects/${projectId}/pdf-import/${sessionId}`);
+
+  const first = created[0];
+  if (first?.targetType === "DOCUMENT") redirect(`/projects/${projectId}/documents/${first.targetId}`);
+  if (first?.targetType === "STORY_NOTE") redirect(`/projects/${projectId}/notes#${first.targetId}`);
+  redirect(`/projects/${projectId}/research#${first?.targetId || ""}`);
 }
 
 export async function importPdfResourceAction(projectId: string, resourceId: string, formData: FormData) {
@@ -493,6 +581,134 @@ export async function searchEverything(userId: string, query: string) {
 }
 
 // TODO: Collaborative writing should replace simple ownership checks with membership/permissions.
+
+function pdfSessionPayload(value: Prisma.JsonValue): { sections: DetectedPdfSection[]; warnings: string[]; manualMarker?: string } {
+  const parsed = z
+    .object({
+      sections: z
+        .array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            startIndex: z.number(),
+            endIndex: z.number(),
+            text: z.string(),
+            confidence: z.number(),
+            detectedPattern: z.string(),
+            include: z.boolean().default(true),
+            warnings: z.array(z.string()).optional()
+          })
+        )
+        .default([]),
+      warnings: z.array(z.string()).default([]),
+      manualMarker: z.string().optional()
+    })
+    .safeParse(value);
+  return parsed.success ? parsed.data : { sections: [], warnings: ["Stored PDF chapter detection data could not be read."] };
+}
+
+function selectedPdfSections(formData: FormData, sections: DetectedPdfSection[]) {
+  const sectionIds = formData.getAll("sectionId").map(String);
+  const byId = new Map(sections.map((section) => [section.id, section]));
+  const selected = sectionIds
+    .map((id) => {
+      const source = byId.get(id);
+      if (!source || formData.get(`include-${id}`) !== "on") return null;
+      return {
+        ...source,
+        title: titleSchema.parse(formData.get(`title-${id}`)),
+        include: true
+      };
+    })
+    .filter((section): section is DetectedPdfSection => Boolean(section));
+  const mergeIds = new Set(sectionIds.filter((id) => formData.get(`merge-${id}`) === "on"));
+  return mergeSections(selected, mergeIds);
+}
+
+async function createImportedPdfItems({
+  projectId,
+  userId,
+  resourceId,
+  resourceOriginalName,
+  sessionId,
+  destination,
+  sections
+}: {
+  projectId: string;
+  userId: string;
+  resourceId: string;
+  resourceOriginalName: string;
+  sessionId: string;
+  destination: "DOCUMENT" | "STORY_NOTE" | "RESEARCH_NOTE";
+  sections: DetectedPdfSection[];
+}) {
+  const created: { targetType: "DOCUMENT" | "STORY_NOTE" | "RESEARCH_NOTE"; targetId: string }[] = [];
+
+  if (destination === "DOCUMENT") {
+    const maxOrder = await prisma.document.aggregate({ where: { projectId, userId, kind: "MANUSCRIPT" }, _max: { sortOrder: true } });
+    let sortOrder = maxOrder._max.sortOrder ?? 0;
+    for (const [index, section] of sections.entries()) {
+      sortOrder += 1;
+      const text = section.text.trim();
+      const document = await prisma.document.create({
+        data: {
+          title: section.title,
+          contentHtml: plainTextToHtml(text),
+          plainText: text,
+          wordCount: wordCount(text),
+          charCount: text.length,
+          sortOrder,
+          projectId,
+          userId,
+          resourceLinks: { create: { resourceId, linkType: "DOCUMENT" } }
+        }
+      });
+      await prisma.pdfImportedItem.create({ data: { importSessionId: sessionId, targetType: "DOCUMENT", targetId: document.id, title: document.title, sortOrder: index } });
+      await syncInternalLinks(prisma, { projectId, sourceType: "DOCUMENT", sourceId: document.id, text: `${document.title}\n${document.plainText}` });
+      created.push({ targetType: "DOCUMENT", targetId: document.id });
+    }
+    return created;
+  }
+
+  if (destination === "STORY_NOTE") {
+    for (const [index, section] of sections.entries()) {
+      const text = section.text.trim();
+      const note = await prisma.storyNote.create({
+        data: {
+          title: section.title,
+          body: text,
+          type: "GENERAL",
+          projectId,
+          userId,
+          resourceLinks: { create: { resourceId, linkType: "STORY_NOTE" } }
+        }
+      });
+      await prisma.pdfImportedItem.create({ data: { importSessionId: sessionId, targetType: "STORY_NOTE", targetId: note.id, title: note.title, sortOrder: index } });
+      await syncInternalLinks(prisma, { projectId, sourceType: "STORY_NOTE", sourceId: note.id, text: `${note.title}\n${note.body}` });
+      created.push({ targetType: "STORY_NOTE", targetId: note.id });
+    }
+    return created;
+  }
+
+  for (const [index, section] of sections.entries()) {
+    const text = section.text.trim();
+    const research = await prisma.researchNote.create({
+      data: {
+        title: section.title,
+        sourceTitle: resourceOriginalName,
+        summary: text,
+        personalNotes: "",
+        projectId,
+        userId,
+        resourceLinks: { create: { resourceId, linkType: "RESEARCH_NOTE" } }
+      }
+    });
+    await prisma.pdfImportedItem.create({ data: { importSessionId: sessionId, targetType: "RESEARCH_NOTE", targetId: research.id, title: research.title, sortOrder: index } });
+    await syncInternalLinks(prisma, { projectId, sourceType: "RESEARCH_NOTE", sourceId: research.id, text: `${research.title}\n${research.summary}` });
+    created.push({ targetType: "RESEARCH_NOTE", targetId: research.id });
+  }
+  return created;
+}
 
 function databaseSetupError() {
   return "The database is not ready yet. Set DATABASE_URL, start PostgreSQL, then run npm run prisma:migrate.";
