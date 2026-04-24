@@ -21,7 +21,7 @@ export default async function NotesPage({ params }: { params: Promise<{ id: stri
         </form>
         <div className="grid gap-4 lg:grid-cols-2">
           {notes.map((note) => (
-            <form key={note.id} action={updateStoryNoteAction.bind(null, id, note.id)} className="rounded-xl bg-paper p-5 ring-1 ring-stone-200">
+            <form id={note.id} key={note.id} action={updateStoryNoteAction.bind(null, id, note.id)} className="rounded-xl bg-paper p-5 ring-1 ring-stone-200">
               <Fields note={note} />
               <button className="mt-3 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm">Save</button>
             </form>

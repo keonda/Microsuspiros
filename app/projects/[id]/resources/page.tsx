@@ -22,7 +22,7 @@ export default async function ResourcesPage({ params }: { params: Promise<{ id: 
       </form>
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {resources.map((resource) => (
-          <article key={resource.id} className="rounded-xl bg-paper p-5 ring-1 ring-stone-200">
+          <article id={resource.id} key={resource.id} className="rounded-xl bg-paper p-5 ring-1 ring-stone-200">
             <h2 className="font-serif text-xl font-bold">{resource.title}</h2>
             <p className="mt-1 text-sm text-stone-500">{resource.originalName} · {bytesLabel(resource.fileSize)} · {resource.mimeType}</p>
             <Preview id={resource.id} mimeType={resource.mimeType} title={resource.title} />

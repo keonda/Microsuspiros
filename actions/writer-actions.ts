@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, ProjectStatus, StoryNoteType } from "@prisma/client";
 import { createSession, destroySession, hashPassword, nextRegisteredRole, requireAdmin, requireUser, verifyPassword } from "@/lib/auth";
+import { encryptSecret } from "@/lib/crypto";
+import { syncInternalLinks } from "@/lib/internal-links";
 import { prisma } from "@/lib/prisma";
 import { storeUpload, validateUpload } from "@/lib/uploads";
 
@@ -198,7 +200,8 @@ export async function createStoryNoteAction(projectId: string, formData: FormDat
     })
     .parse(Object.fromEntries(formData));
 
-  await prisma.storyNote.create({ data: { ...parsed, body: parsed.body || "", tagsText: parsed.tagsText || "", projectId, userId: user.id } });
+  const note = await prisma.storyNote.create({ data: { ...parsed, body: parsed.body || "", tagsText: parsed.tagsText || "", projectId, userId: user.id } });
+  await syncInternalLinks(prisma, { projectId, sourceType: "STORY_NOTE", sourceId: note.id, text: `${note.title}\n${note.body}` });
   revalidatePath(`/projects/${projectId}/notes`);
 }
 
@@ -217,6 +220,7 @@ export async function updateStoryNoteAction(projectId: string, noteId: string, f
     where: { id: noteId, projectId, userId: user.id },
     data: { ...parsed, body: parsed.body || "", tagsText: parsed.tagsText || "" }
   });
+  await syncInternalLinks(prisma, { projectId, sourceType: "STORY_NOTE", sourceId: noteId, text: `${parsed.title}\n${parsed.body || ""}` });
   revalidatePath(`/projects/${projectId}/notes`);
 }
 
@@ -235,7 +239,7 @@ export async function createResearchNoteAction(projectId: string, formData: Form
     })
     .parse(Object.fromEntries(formData));
 
-  await prisma.researchNote.create({
+  const note = await prisma.researchNote.create({
     data: {
       ...parsed,
       sourceTitle: parsed.sourceTitle || null,
@@ -249,6 +253,7 @@ export async function createResearchNoteAction(projectId: string, formData: Form
       userId: user.id
     }
   });
+  await syncInternalLinks(prisma, { projectId, sourceType: "RESEARCH_NOTE", sourceId: note.id, text: `${note.title}\n${note.summary}\n${note.personalNotes}` });
   revalidatePath(`/projects/${projectId}/research`);
 }
 
@@ -292,7 +297,7 @@ export async function createBrainstormCardAction(projectId: string, columnId: st
     })
     .parse(Object.fromEntries(formData));
   const maxOrder = await prisma.brainstormCard.aggregate({ where: { columnId }, _max: { sortOrder: true } });
-  await prisma.brainstormCard.create({
+  const card = await prisma.brainstormCard.create({
     data: {
       ...parsed,
       body: parsed.body || "",
@@ -305,6 +310,7 @@ export async function createBrainstormCardAction(projectId: string, columnId: st
       userId: user.id
     }
   });
+  await syncInternalLinks(prisma, { projectId, sourceType: "BRAINSTORM_CARD", sourceId: card.id, text: `${card.title}\n${card.body}` });
   revalidatePath(`/projects/${projectId}/brainstorm`);
 }
 
@@ -326,6 +332,35 @@ export async function updateUserAdminAction(userId: string, formData: FormData) 
   revalidatePath("/admin");
 }
 
+export async function updateAISettingsAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = z
+    .object({
+      provider: z.literal("GROQ"),
+      model: z.string().trim().min(1).max(120),
+      apiKey: z.string().trim().max(400).optional()
+    })
+    .parse(Object.fromEntries(formData));
+
+  const existing = await prisma.aISettings.findUnique({ where: { userId: user.id } });
+  await prisma.aISettings.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      provider: parsed.provider,
+      model: parsed.model,
+      apiKeyEncrypted: parsed.apiKey ? encryptSecret(parsed.apiKey) : null
+    },
+    update: {
+      provider: parsed.provider,
+      model: parsed.model,
+      apiKeyEncrypted: parsed.apiKey ? encryptSecret(parsed.apiKey) : existing?.apiKeyEncrypted
+    }
+  });
+
+  revalidatePath("/settings");
+}
+
 export async function searchEverything(userId: string, query: string) {
   const contains: Prisma.StringFilter = { contains: query, mode: "insensitive" };
   const [projects, documents, storyNotes, researchNotes, cards, resources] = await Promise.all([
@@ -339,8 +374,6 @@ export async function searchEverything(userId: string, query: string) {
   return { projects, documents, storyNotes, researchNotes, cards, resources };
 }
 
-// TODO: AI assistant integration should connect here as project-aware server actions.
-// TODO: Version history should snapshot document content before destructive saves.
 // TODO: Collaborative writing should replace simple ownership checks with membership/permissions.
 
 function databaseSetupError() {

@@ -390,6 +390,18 @@ enum ResourceLinkType {
   BRAINSTORM_CARD
 }
 
+enum LinkableType {
+  DOCUMENT
+  STORY_NOTE
+  RESEARCH_NOTE
+  BRAINSTORM_CARD
+  RESOURCE
+}
+
+enum AIProvider {
+  GROQ
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -404,11 +416,13 @@ model User {
   projects          Project[]
   folders           Folder[]
   documents         Document[]
+  documentVersions  DocumentVersion[]
   storyNotes        StoryNote[]
   researchNotes     ResearchNote[]
   brainstormBoards  BrainstormBoard[]
   brainstormCards   BrainstormCard[]
   resources         Resource[]
+  aiSettings        AISettings?
 
   @@index([role])
   @@index([disabled])
@@ -498,10 +512,48 @@ model Document {
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tags     WriterTag[] @relation("DocumentTags")
   resourceLinks ResourceLink[] @relation("DocumentResourceLinks")
+  versions DocumentVersion[]
 
   @@index([projectId, kind, sortOrder])
   @@index([userId])
   @@index([isTrash])
+}
+
+model DocumentVersion {
+  id                  String   @id @default(cuid())
+  documentId          String
+  userId              String
+  titleSnapshot       String
+  contentJsonSnapshot Json?
+  contentHtmlSnapshot String   @default("")
+  plainTextSnapshot   String   @default("")
+  wordCountSnapshot   Int      @default(0)
+  changeSummary       String?
+  createdAt           DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+  @@index([userId])
+}
+
+model InternalLink {
+  id             String       @id @default(cuid())
+  projectId      String
+  sourceType     LinkableType
+  sourceId       String
+  targetType     LinkableType?
+  targetId       String?
+  rawText        String
+  normalizedText String
+  excerpt        String?
+  createdAt      DateTime     @default(now())
+
+  @@index([projectId])
+  @@index([sourceType, sourceId])
+  @@index([targetType, targetId])
+  @@index([normalizedText])
 }
 
 model StoryNote {
@@ -677,4 +729,18 @@ model WriterTag {
 
   @@unique([projectId, slug])
   @@index([projectId])
+}
+
+model AISettings {
+  id              String     @id @default(cuid())
+  userId          String     @unique
+  provider        AIProvider @default(GROQ)
+  apiKeyEncrypted String?
+  model           String     @default("llama-3.1-8b-instant")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([provider])
 }

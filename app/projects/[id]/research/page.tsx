@@ -27,7 +27,7 @@ export default async function ResearchPage({ params }: { params: Promise<{ id: s
         </form>
         <div className="space-y-4">
           {notes.map((note) => (
-            <article key={note.id} className="rounded-xl bg-paper p-5 ring-1 ring-stone-200">
+            <article id={note.id} key={note.id} className="rounded-xl bg-paper p-5 ring-1 ring-stone-200">
               <h2 className="font-serif text-2xl font-bold">{note.title}</h2>
               <p className="mt-1 text-sm text-stone-500">{note.author || "Unknown author"} {note.sourceTitle ? `- ${note.sourceTitle}` : ""}</p>
               {note.sourceUrl ? <a className="mt-2 inline-block text-sm font-medium text-cedar" href={note.sourceUrl} target="_blank">Open source</a> : null}

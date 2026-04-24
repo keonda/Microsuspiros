@@ -33,6 +33,7 @@ export function BrainstormBoard({
             {column.cards.map((card) => (
               <article
                 key={card.id}
+                id={card.id}
                 draggable
                 onDragStart={(event) => event.dataTransfer.setData("text/plain", card.id)}
                 className="cursor-grab rounded-lg bg-white p-4 shadow-sm ring-1 ring-stone-200"

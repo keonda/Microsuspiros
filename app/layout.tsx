@@ -3,7 +3,7 @@ import { Merriweather, Inter } from "next/font/google";
 import "./globals.css";
 import { currentUser } from "@/lib/auth";
 import { logoutAction } from "@/actions/writer-actions";
-import { BookOpen, LogOut, Search, Shield, Sparkles } from "lucide-react";
+import { BookOpen, LogOut, Search, Settings, Shield, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -41,6 +41,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       <Shield className="size-4" /> Admin
                     </Link>
                   ) : null}
+                  <Link className="hidden items-center gap-2 rounded-md px-3 py-2 hover:bg-white sm:flex" href="/settings">
+                    <Settings className="size-4" /> Settings
+                  </Link>
                   <span className="hidden rounded-md bg-white px-3 py-2 text-stone-700 sm:inline-flex">{user.displayName}</span>
                   <form action={logoutAction}>
                     <button className="inline-flex items-center gap-2 rounded-md px-3 py-2 hover:bg-white" type="submit">

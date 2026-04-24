@@ -23,6 +23,7 @@ Writer Studio is a private Next.js writing workspace for manuscripts, story note
 - Global and project search
 - HTML/TXT document export and combined project manuscript export
 - Simple admin user management
+- Phase 2 autosave status, version history, wiki links, backlinks, graph view, and optional Groq assistant
 
 ## Local Development
 
@@ -60,6 +61,7 @@ The compose file starts the app and PostgreSQL. Uploads are persisted in the `wr
    - `BASE_URL`
    - `UPLOAD_DIR=/app/uploads`
    - `AUTH_COOKIE_SECURE=true` for HTTPS deployments, or `false` when testing over plain HTTP
+   - `APP_ENCRYPTION_KEY` to a long random secret so stored AI API keys can be decrypted across redeploys
 4. Mount a persistent volume at `/app/uploads`.
 5. Expose port `3000`.
 6. Deploy. The production start command runs `prisma migrate deploy` before `next start`.
@@ -67,11 +69,45 @@ The compose file starts the app and PostgreSQL. Uploads are persisted in the `wr
 
 ## Future TODO Anchors
 
-The codebase includes TODO comments for:
+The codebase still reserves future work for:
 
-- AI assistant integration
 - DOCX/PDF export
-- backlinks graph
 - advanced spellcheck/grammar suggestions
-- version history
 - collaborative writing
+
+## Autosave And Versions
+
+The editor autosaves a few seconds after changes and shows `Unsaved changes`, `Saving...`, `Saved`, or `Save failed`. It also warns before leaving a page with unsaved changes. Manual saves and the `Create Snapshot` button create document versions. Autosaves create timed snapshots about every 12 minutes instead of versioning every keystroke.
+
+The editor version panel can view older text, compare word-count delta against the current draft, restore a version, or duplicate a version into a new document. Restoring first snapshots the current document so the current draft is not lost.
+
+## Wiki Links And Backlinks
+
+Use Obsidian-style links in manuscripts, story notes, and research:
+
+```text
+[[Chapter 3]]
+[[Character: Elena]]
+[[Research: Medieval Bells]]
+```
+
+On save, Writer Studio parses links into `InternalLink`, resolves matching documents, story notes, research notes, brainstorm cards, and resources, and shows unresolved links in the editor side panel. Unresolved links can create a new manuscript document, story note, or research note. The backlinks panel shows other project items that link to the current document with source title and excerpt.
+
+## Graph
+
+Each project has a basic graph view at `/projects/[id]/graph`. It maps documents, story notes, research notes, and resources with edges from resolved internal links. Filters can hide or show node types.
+
+## Groq Assistant
+
+The AI assistant is optional. Add a Groq key in `/settings`; the key is encrypted before storage and never exposed to the frontend. Set a stable `APP_ENCRYPTION_KEY` in production so encrypted keys remain readable after redeploys.
+
+The editor assistant supports:
+
+- summarize current document
+- suggest next scene
+- find inconsistencies
+- rewrite selected text softer
+- rewrite selected text darker
+- extract character notes
+
+AI output never overwrites the manuscript automatically. The panel offers copy, insert below selection, and save as story note.

@@ -26,6 +26,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
       <WriterEditor
+        projectId={id}
         documentId={document.id}
         title={document.title}
         contentJson={document.contentJson}
