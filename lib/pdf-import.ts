@@ -22,23 +22,21 @@ export async function extractPdfText(filePath: string, fileSize: number): Promis
 
   try {
     const buffer = await readFile(filePath);
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    const parsed = await parser.getText();
-    await parser.destroy();
+    const pdfParse = (await import("pdf-parse")).default;
+    const parsed = await pdfParse(buffer);
     const text = normalizePdfText(parsed.text || "");
     if (!text) {
       return {
         status: "NO_TEXT",
         text: null,
-        pageCount: parsed.total || null,
+        pageCount: parsed.numpages || null,
         error: "No selectable text was found. Scanned PDFs may require OCR, which is not included yet."
       };
     }
     return {
       status: "EXTRACTED",
       text,
-      pageCount: parsed.total || null,
+      pageCount: parsed.numpages || null,
       error: null
     };
   } catch (error) {
