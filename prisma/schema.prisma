@@ -402,6 +402,16 @@ enum AIProvider {
   GROQ
 }
 
+enum ResourceExtractionStatus {
+  NONE
+  PENDING
+  EXTRACTED
+  NO_TEXT
+  ENCRYPTED
+  TOO_LARGE
+  FAILED
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -673,6 +683,10 @@ model Resource {
   path        String
   notes       String   @default("")
   tagsText    String   @default("")
+  extractedText String?
+  extractionStatus ResourceExtractionStatus @default(NONE)
+  extractionError String?
+  pageCount   Int?
   projectId   String
   userId      String
   createdAt   DateTime @default(now())

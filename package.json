@@ -25,6 +25,7 @@
     "dotenv": "16.6.1",
     "lucide-react": "0.468.0",
     "next": "16.2.3",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "zod": "3.25.76"

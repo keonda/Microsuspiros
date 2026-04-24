@@ -24,6 +24,7 @@ Writer Studio is a private Next.js writing workspace for manuscripts, story note
 - HTML/TXT document export and combined project manuscript export
 - Simple admin user management
 - Phase 2 autosave status, version history, wiki links, backlinks, graph view, and optional Groq assistant
+- PDF import: upload a PDF, extract selectable text, preview it, and import into a manuscript document, story note, or research note
 
 ## Local Development
 
@@ -111,3 +112,27 @@ The editor assistant supports:
 - extract character notes
 
 AI output never overwrites the manuscript automatically. The panel offers copy, insert below selection, and save as story note.
+
+## PDF Import
+
+Use `Resources -> Import PDF` to upload a PDF into a project. Writer Studio stores the original PDF as a protected downloadable resource, extracts selectable text on the server with `pdf-parse`, and shows a preview before import.
+
+From the preview, choose one destination:
+
+- new manuscript document
+- new story note
+- new research note
+
+The extracted text is stored in the selected item, and the item is linked back to the original PDF resource. The resource records extraction status, page count, extracted text, and any extraction error.
+
+Current limits and errors:
+
+- PDF text extraction is limited to 25 MB.
+- Scanned PDFs may require OCR, which is not included yet.
+- Encrypted, unsupported, corrupt, or no-text PDFs are preserved as resources and show an extraction warning.
+
+Future TODO:
+
+- OCR support for scanned PDFs
+- split PDF by chapter/heading
+- import multiple documents from one PDF

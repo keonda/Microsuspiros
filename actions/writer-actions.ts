@@ -7,8 +7,10 @@ import { Prisma, ProjectStatus, StoryNoteType } from "@prisma/client";
 import { createSession, destroySession, hashPassword, nextRegisteredRole, requireAdmin, requireUser, verifyPassword } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
 import { syncInternalLinks } from "@/lib/internal-links";
+import { extractPdfText } from "@/lib/pdf-import";
 import { prisma } from "@/lib/prisma";
 import { storeUpload, validateUpload } from "@/lib/uploads";
+import { escapeHtml, wordCount } from "@/lib/writer-utils";
 
 const emailSchema = z.string().email().max(255).transform((value) => value.toLowerCase());
 const passwordSchema = z.string().min(8, "Use at least 8 characters.").max(200);
@@ -284,6 +286,112 @@ export async function uploadResourceAction(projectId: string, formData: FormData
   revalidatePath(`/projects/${projectId}/resources`);
 }
 
+export async function uploadPdfForImportAction(projectId: string, formData: FormData) {
+  const user = await requireUser();
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new Error("Choose a PDF to import.");
+  if (file.type !== "application/pdf") throw new Error("Only PDF files can be imported here.");
+
+  const error = validateUpload(file);
+  if (error) throw new Error(error);
+
+  const stored = await storeUpload(projectId, file);
+  const resource = await prisma.resource.create({
+    data: {
+      title: String(formData.get("title") || file.name).slice(0, 180),
+      originalName: file.name,
+      fileName: stored.fileName,
+      mimeType: file.type,
+      fileSize: file.size,
+      path: stored.relativePath,
+      notes: String(formData.get("notes") || "Imported PDF source").slice(0, 2000),
+      tagsText: String(formData.get("tagsText") || "").slice(0, 500),
+      extractionStatus: "PENDING",
+      projectId,
+      userId: user.id
+    }
+  });
+
+  const extraction = await extractPdfText(stored.absolutePath, file.size);
+  await prisma.resource.update({
+    where: { id: resource.id },
+    data: {
+      extractedText: extraction.text,
+      extractionStatus: extraction.status,
+      extractionError: extraction.error,
+      pageCount: extraction.pageCount
+    }
+  });
+
+  revalidatePath(`/projects/${projectId}/resources`);
+  redirect(`/projects/${projectId}/resources?import=${resource.id}`);
+}
+
+export async function importPdfResourceAction(projectId: string, resourceId: string, formData: FormData) {
+  const user = await requireUser();
+  const destination = z.enum(["DOCUMENT", "STORY_NOTE", "RESEARCH_NOTE"]).parse(formData.get("destination"));
+  const title = titleSchema.parse(formData.get("title"));
+  const resource = await prisma.resource.findFirst({ where: { id: resourceId, projectId, userId: user.id } });
+  if (!resource) throw new Error("PDF resource not found.");
+  if (resource.extractionStatus !== "EXTRACTED" || !resource.extractedText?.trim()) {
+    throw new Error(resource.extractionError || "This PDF has no extracted text to import.");
+  }
+
+  const text = resource.extractedText;
+  const html = plainTextToHtml(text);
+
+  if (destination === "DOCUMENT") {
+    const maxOrder = await prisma.document.aggregate({ where: { projectId, userId: user.id, kind: "MANUSCRIPT" }, _max: { sortOrder: true } });
+    const document = await prisma.document.create({
+      data: {
+        title,
+        contentHtml: html,
+        plainText: text,
+        wordCount: wordCount(text),
+        charCount: text.length,
+        sortOrder: (maxOrder._max.sortOrder ?? 0) + 1,
+        projectId,
+        userId: user.id,
+        resourceLinks: { create: { resourceId: resource.id, linkType: "DOCUMENT" } }
+      }
+    });
+    await syncInternalLinks(prisma, { projectId, sourceType: "DOCUMENT", sourceId: document.id, text: `${document.title}\n${document.plainText}` });
+    revalidatePath(`/projects/${projectId}`);
+    redirect(`/projects/${projectId}/documents/${document.id}`);
+  }
+
+  if (destination === "STORY_NOTE") {
+    const note = await prisma.storyNote.create({
+      data: {
+        title,
+        body: text,
+        type: "GENERAL",
+        projectId,
+        userId: user.id,
+        resourceLinks: { create: { resourceId: resource.id, linkType: "STORY_NOTE" } }
+      }
+    });
+    await syncInternalLinks(prisma, { projectId, sourceType: "STORY_NOTE", sourceId: note.id, text: `${note.title}\n${note.body}` });
+    revalidatePath(`/projects/${projectId}/notes`);
+    redirect(`/projects/${projectId}/notes#${note.id}`);
+  }
+
+  const research = await prisma.researchNote.create({
+    data: {
+      title,
+      sourceTitle: resource.originalName,
+      summary: text,
+      personalNotes: "",
+      projectId,
+      userId: user.id,
+      resourceLinks: { create: { resourceId: resource.id, linkType: "RESEARCH_NOTE" } }
+    }
+  });
+  await syncInternalLinks(prisma, { projectId, sourceType: "RESEARCH_NOTE", sourceId: research.id, text: `${research.title}\n${research.summary}` });
+  revalidatePath(`/projects/${projectId}/research`);
+  redirect(`/projects/${projectId}/research#${research.id}`);
+}
+
 export async function createBrainstormCardAction(projectId: string, columnId: string, formData: FormData) {
   const user = await requireUser();
   const column = await prisma.brainstormColumn.findFirst({ where: { id: columnId, projectId }, include: { board: true } });
@@ -378,4 +486,11 @@ export async function searchEverything(userId: string, query: string) {
 
 function databaseSetupError() {
   return "The database is not ready yet. Set DATABASE_URL, start PostgreSQL, then run npm run prisma:migrate.";
+}
+
+function plainTextToHtml(text: string) {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph.trim()).replace(/\n/g, "<br />")}</p>`)
+    .join("\n");
 }
