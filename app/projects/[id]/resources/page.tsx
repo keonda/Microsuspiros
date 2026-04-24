@@ -1,4 +1,4 @@
-import { importPdfResourceAction, uploadPdfForImportAction, uploadResourceAction } from "@/actions/writer-actions";
+import { deleteResourceAction, importPdfResourceAction, uploadPdfForImportAction, uploadResourceAction } from "@/actions/writer-actions";
 import { requireUser } from "@/lib/auth";
 import { pdfPreview } from "@/lib/pdf-import";
 import { prisma } from "@/lib/prisma";
@@ -65,9 +65,16 @@ export default async function ResourcesPage({
             <Preview id={resource.id} mimeType={resource.mimeType} title={resource.title} />
             {resource.notes ? <p className="mt-3 text-sm leading-6 text-stone-600">{resource.notes}</p> : null}
             {resource.tagsText ? <p className="mt-2 text-xs text-cedar">{resource.tagsText}</p> : null}
-            <a className="mt-4 inline-block rounded-md border border-stone-200 bg-white px-3 py-2 text-sm" href={`/api/resources/${resource.id}/download?download=1`}>
-              Download
-            </a>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a className="inline-block rounded-md border border-stone-200 bg-white px-3 py-2 text-sm" href={`/api/resources/${resource.id}/download?download=1`}>
+                Download
+              </a>
+              <form action={deleteResourceAction.bind(null, id, resource.id)}>
+                <button className="rounded-md border border-clay/30 bg-white px-3 py-2 text-sm text-clay" type="submit">
+                  Delete
+                </button>
+              </form>
+            </div>
           </article>
         ))}
       </div>

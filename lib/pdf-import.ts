@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import type { ResourceExtractionStatus } from "@prisma/client";
 
 const MAX_PDF_IMPORT_SIZE = 25 * 1024 * 1024;
+const require = createRequire(import.meta.url);
 
 export type PdfExtractionResult = {
   status: ResourceExtractionStatus;
@@ -22,7 +24,7 @@ export async function extractPdfText(filePath: string, fileSize: number): Promis
 
   try {
     const buffer = await readFile(filePath);
-    const pdfParse = (await import("pdf-parse")).default;
+    const pdfParse = require("pdf-parse/lib/pdf-parse.js") as typeof import("pdf-parse").default;
     const parsed = await pdfParse(buffer);
     const text = normalizePdfText(parsed.text || "");
     if (!text) {

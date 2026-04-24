@@ -9,7 +9,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { syncInternalLinks } from "@/lib/internal-links";
 import { extractPdfText } from "@/lib/pdf-import";
 import { prisma } from "@/lib/prisma";
-import { storeUpload, validateUpload } from "@/lib/uploads";
+import { deleteStoredUpload, storeUpload, validateUpload } from "@/lib/uploads";
 import { escapeHtml, wordCount } from "@/lib/writer-utils";
 
 const emailSchema = z.string().email().max(255).transform((value) => value.toLowerCase());
@@ -390,6 +390,16 @@ export async function importPdfResourceAction(projectId: string, resourceId: str
   await syncInternalLinks(prisma, { projectId, sourceType: "RESEARCH_NOTE", sourceId: research.id, text: `${research.title}\n${research.summary}` });
   revalidatePath(`/projects/${projectId}/research`);
   redirect(`/projects/${projectId}/research#${research.id}`);
+}
+
+export async function deleteResourceAction(projectId: string, resourceId: string) {
+  const user = await requireUser();
+  const resource = await prisma.resource.findFirst({ where: { id: resourceId, projectId, userId: user.id } });
+  if (!resource) throw new Error("Resource not found.");
+
+  await prisma.resource.delete({ where: { id: resource.id } });
+  await deleteStoredUpload(resource.path);
+  revalidatePath(`/projects/${projectId}/resources`);
 }
 
 export async function createBrainstormCardAction(projectId: string, columnId: string, formData: FormData) {

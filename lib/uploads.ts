@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -38,6 +38,19 @@ export async function resolveStoredUpload(relativePath: string) {
     if (fileStat?.isFile()) return { absolutePath, fileStat };
   }
   return null;
+}
+
+export async function deleteStoredUpload(relativePath: string) {
+  const deleted: string[] = [];
+  for (const root of uploadRootCandidates()) {
+    const absolutePath = path.resolve(root, relativePath);
+    if (!absolutePath.startsWith(root)) continue;
+    const fileStat = await stat(absolutePath).catch(() => null);
+    if (!fileStat?.isFile()) continue;
+    await unlink(absolutePath).catch(() => null);
+    deleted.push(absolutePath);
+  }
+  return deleted;
 }
 
 export function validateUpload(file: File) {
