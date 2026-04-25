@@ -372,7 +372,10 @@ function AnalyticsPanel({ songId, events, snapshots }: { songId: string; events:
         <input name="watchTime" type="number" min="0" className={inputClass()} placeholder="Watch time (minutes)" />
         <input name="ctr" type="number" min="0" step="0.01" className={inputClass()} placeholder="CTR %" />
         <input name="retention" type="number" min="0" step="0.01" className={inputClass()} placeholder="Retention %" />
-        <Button type="submit">Save snapshot</Button>
+        <div className="md:col-span-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-mist/60">
+          Leave the metric fields empty and choose a synced YouTube publish event to auto-import views, likes, and comments.
+        </div>
+        <Button type="submit">Save or sync snapshot</Button>
       </form>
       <div className="mt-5 space-y-3">
         {snapshots.length ? snapshots.map((snapshot) => (

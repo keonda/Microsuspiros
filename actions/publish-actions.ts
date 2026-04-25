@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { buildSongExportPackets } from "@/lib/export-packets";
 import { prisma } from "@/lib/prisma";
 import { syncWebsitePublish } from "@/lib/integrations/website";
+import { syncAnalyticsSnapshotForEvent } from "@/lib/integrations/youtube-analytics";
 import { syncYoutubePublish } from "@/lib/integrations/youtube";
 import { formString } from "@/lib/validation";
 
@@ -57,7 +58,7 @@ export async function logPublishEvent(songId: string, formData: FormData) {
     };
   }
 
-  await prisma.publishEvent.create({
+  const createdEvent = await prisma.publishEvent.create({
     data: {
       songId,
       platform,
@@ -79,6 +80,9 @@ export async function logPublishEvent(songId: string, formData: FormData) {
   }
   if (platform === PublishPlatform.WEBSITE) {
     await prisma.song.update({ where: { id: songId }, data: { publishedWebsite: true } });
+  }
+  if (platform === PublishPlatform.YOUTUBE) {
+    await syncAnalyticsSnapshotForEvent(songId, createdEvent.id).catch(() => null);
   }
 
   revalidatePath("/");
@@ -136,6 +140,10 @@ export async function syncPublishEvent(eventId: string) {
       lastSyncedAt: new Date()
     }
   });
+
+  if (event.platform === PublishPlatform.YOUTUBE && event.songId) {
+    await syncAnalyticsSnapshotForEvent(event.songId, event.id).catch(() => null);
+  }
 
   revalidatePath("/");
   revalidatePath("/integrations");

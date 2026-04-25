@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { appConfig } from "@/lib/config";
 import { dashboardPresetSections, dashboardSectionIds, type DashboardPreset } from "@/lib/dashboard-preferences";
+import { syncAnalyticsSnapshotForEvent } from "@/lib/integrations/youtube-analytics";
 import { prisma } from "@/lib/prisma";
 import { formString, formStringArray } from "@/lib/validation";
 
@@ -61,19 +62,50 @@ export async function saveDashboardPreferences(formData: FormData) {
 
 export async function createAnalyticsSnapshot(songId: string, formData: FormData) {
   const publishEventId = formString(formData, "publishEventId") || null;
+  const platform = (formString(formData, "platform") as PublishPlatform) || PublishPlatform.OTHER;
+  const snapshotDate = toDateOrNow(formString(formData, "snapshotDate"));
+  const views = toInt(formString(formData, "views"));
+  const likes = toInt(formString(formData, "likes"));
+  const comments = toInt(formString(formData, "comments"));
+  const shares = toInt(formString(formData, "shares"));
+  const watchTime = toInt(formString(formData, "watchTime"));
+  const ctr = toFloat(formString(formData, "ctr"));
+  const retention = toFloat(formString(formData, "retention"));
+
+  const shouldAutoImportYoutube =
+    platform === PublishPlatform.YOUTUBE &&
+    Boolean(publishEventId) &&
+    appConfig().analyticsImportEnabled &&
+    views === null &&
+    likes === null &&
+    comments === null &&
+    shares === null &&
+    watchTime === null &&
+    ctr === null &&
+    retention === null;
+
+  if (publishEventId && shouldAutoImportYoutube) {
+    const synced = await syncAnalyticsSnapshotForEvent(songId, publishEventId, snapshotDate);
+    if (synced) {
+      revalidatePath("/");
+      revalidatePath(`/songs/${songId}`);
+      redirect(`/songs/${songId}`);
+    }
+  }
+
   await prisma.analyticsSnapshot.create({
     data: {
       songId,
       publishEventId,
-      platform: (formString(formData, "platform") as PublishPlatform) || PublishPlatform.OTHER,
-      snapshotDate: toDateOrNow(formString(formData, "snapshotDate")),
-      views: toInt(formString(formData, "views")),
-      likes: toInt(formString(formData, "likes")),
-      comments: toInt(formString(formData, "comments")),
-      shares: toInt(formString(formData, "shares")),
-      watchTime: toInt(formString(formData, "watchTime")),
-      ctr: toFloat(formString(formData, "ctr")),
-      retention: toFloat(formString(formData, "retention"))
+      platform,
+      snapshotDate,
+      views,
+      likes,
+      comments,
+      shares,
+      watchTime,
+      ctr,
+      retention
     }
   });
 
