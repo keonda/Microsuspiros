@@ -61,7 +61,7 @@ export async function saveDashboardPreferences(formData: FormData) {
 }
 
 export async function createAnalyticsSnapshot(songId: string, formData: FormData) {
-  const publishEventId = formString(formData, "publishEventId") || null;
+  const selectedPublishEventId = formString(formData, "publishEventId") || null;
   const platform = (formString(formData, "platform") as PublishPlatform) || PublishPlatform.OTHER;
   const snapshotDate = toDateOrNow(formString(formData, "snapshotDate"));
   const views = toInt(formString(formData, "views"));
@@ -71,11 +71,7 @@ export async function createAnalyticsSnapshot(songId: string, formData: FormData
   const watchTime = toInt(formString(formData, "watchTime"));
   const ctr = toFloat(formString(formData, "ctr"));
   const retention = toFloat(formString(formData, "retention"));
-
-  const shouldAutoImportYoutube =
-    platform === PublishPlatform.YOUTUBE &&
-    Boolean(publishEventId) &&
-    appConfig().analyticsImportEnabled &&
+  const fieldsAreEmpty =
     views === null &&
     likes === null &&
     comments === null &&
@@ -84,6 +80,29 @@ export async function createAnalyticsSnapshot(songId: string, formData: FormData
     ctr === null &&
     retention === null;
 
+  let publishEventId = selectedPublishEventId;
+  if (platform === PublishPlatform.YOUTUBE && !publishEventId && fieldsAreEmpty) {
+    const fallbackYoutubeEvent = await prisma.publishEvent.findFirst({
+      where: {
+        songId,
+        platform: PublishPlatform.YOUTUBE,
+        OR: [
+          { externalId: { not: null } },
+          { externalUrl: { not: null } },
+          { url: { not: null } }
+        ]
+      },
+      orderBy: { publishedAt: "desc" }
+    });
+    publishEventId = fallbackYoutubeEvent?.id || null;
+  }
+
+  const shouldAutoImportYoutube =
+    platform === PublishPlatform.YOUTUBE &&
+    Boolean(publishEventId) &&
+    appConfig().analyticsImportEnabled &&
+    fieldsAreEmpty;
+
   if (publishEventId && shouldAutoImportYoutube) {
     const synced = await syncAnalyticsSnapshotForEvent(songId, publishEventId, snapshotDate);
     if (synced) {
@@ -91,6 +110,10 @@ export async function createAnalyticsSnapshot(songId: string, formData: FormData
       revalidatePath(`/songs/${songId}`);
       redirect(`/songs/${songId}`);
     }
+  }
+
+  if (platform === PublishPlatform.YOUTUBE && fieldsAreEmpty) {
+    redirect(`/songs/${songId}?analyticsError=${encodeURIComponent("Choose a synced YouTube publish event first, or enter metrics manually.")}`);
   }
 
   await prisma.analyticsSnapshot.create({

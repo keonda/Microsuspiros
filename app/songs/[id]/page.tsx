@@ -24,7 +24,7 @@ import { releaseRecommendation } from "@/lib/release-recommendations";
 
 export const dynamic = "force-dynamic";
 
-export default async function SongDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ assetError?: string }> }) {
+export default async function SongDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ assetError?: string; analyticsError?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
   const [song, playlists, logs, publishEvents, campaigns, analyticsSnapshots] = await Promise.all([
@@ -101,6 +101,11 @@ export default async function SongDetailPage({ params, searchParams }: { params:
           </Card>
           <PublishingPanel songId={song.id} events={publishEvents} />
           <ReleasePlanningPanel songId={song.id} songTitle={song.title} campaigns={campaigns} campaignItems={song.campaignItems} scheduledReleases={song.scheduledReleases} />
+          {query.analyticsError ? (
+            <p className="rounded-lg bg-red-500/12 p-3 text-sm text-red-100 ring-1 ring-red-300/20">
+              Analytics sync: {decodeURIComponent(query.analyticsError.replaceAll("+", " "))}
+            </p>
+          ) : null}
           <AnalyticsPanel songId={song.id} events={publishEvents} snapshots={analyticsSnapshots} />
         </div>
 
@@ -353,6 +358,8 @@ function ExportRow({ label, value }: { label: string; value: string | null }) {
 }
 
 function AnalyticsPanel({ songId, events, snapshots }: { songId: string; events: PublishItem[]; snapshots: AnalyticsSnapshot[] }) {
+  const youtubeEvents = events.filter((event) => event.platform === PublishPlatform.YOUTUBE);
+  const defaultYoutubeEvent = youtubeEvents.find((event) => event.externalId || event.externalUrl || event.url) ?? youtubeEvents[0] ?? null;
   return (
     <Card>
       <CardTitle title="Analytics" eyebrow={`${snapshots.length} snapshots`} />
@@ -360,9 +367,11 @@ function AnalyticsPanel({ songId, events, snapshots }: { songId: string; events:
         <select name="platform" className={inputClass()} defaultValue={PublishPlatform.YOUTUBE}>
           {Object.values(PublishPlatform).map((platform) => <option key={platform} value={platform}>{platform}</option>)}
         </select>
-        <select name="publishEventId" className={inputClass()} defaultValue="">
+        <select name="publishEventId" className={inputClass()} defaultValue={defaultYoutubeEvent?.id ?? ""}>
           <option value="">No publish event</option>
-          {events.map((event) => <option key={event.id} value={event.id}>{event.platform} - {dateLabel(event.publishedAt)}</option>)}
+          {youtubeEvents.length
+            ? youtubeEvents.map((event) => <option key={event.id} value={event.id}>{event.platform} - {dateLabel(event.publishedAt)}</option>)
+            : events.map((event) => <option key={event.id} value={event.id}>{event.platform} - {dateLabel(event.publishedAt)}</option>)}
         </select>
         <input name="snapshotDate" type="date" className={inputClass()} />
         <input name="views" type="number" min="0" className={inputClass()} placeholder="Views" />
@@ -373,7 +382,7 @@ function AnalyticsPanel({ songId, events, snapshots }: { songId: string; events:
         <input name="ctr" type="number" min="0" step="0.01" className={inputClass()} placeholder="CTR %" />
         <input name="retention" type="number" min="0" step="0.01" className={inputClass()} placeholder="Retention %" />
         <div className="md:col-span-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-mist/60">
-          Leave the metric fields empty and choose a synced YouTube publish event to auto-import views, likes, and comments.
+          Leave the metric fields empty to auto-import views, likes, and comments from the latest synced YouTube event.
         </div>
         <Button type="submit">Save or sync snapshot</Button>
       </form>

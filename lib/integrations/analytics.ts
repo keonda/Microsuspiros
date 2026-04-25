@@ -10,8 +10,8 @@ export function analyticsIntegrationStatus(): IntegrationStatus {
     label: "Analytics Import",
     enabled,
     configured: enabled,
-    mode: enabled ? "mock" : "disabled",
-    warning: enabled ? "Manual entry is available now. API imports can be layered in later." : undefined
+    mode: enabled ? "enabled" : "disabled",
+    warning: enabled ? undefined : "Analytics import is disabled."
   };
 }
 
