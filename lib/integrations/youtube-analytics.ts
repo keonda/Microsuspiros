@@ -20,9 +20,14 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs
   }
 }
 
-export async function fetchYoutubeAnalytics(videoId: string): Promise<YoutubeAnalyticsImportResult | null> {
+export async function fetchYoutubeAnalytics(videoId: string): Promise<YoutubeAnalyticsImportResult> {
   const config = appConfig();
-  if (!config.analyticsImportEnabled || !config.youtubeApiKey) return null;
+  if (!config.analyticsImportEnabled) {
+    throw new Error("Analytics import is disabled. Set ANALYTICS_IMPORT_ENABLED=true.");
+  }
+  if (!config.youtubeApiKey) {
+    throw new Error("YOUTUBE_API_KEY is missing.");
+  }
 
   const query = new URLSearchParams({
     part: "statistics",
@@ -30,43 +35,56 @@ export async function fetchYoutubeAnalytics(videoId: string): Promise<YoutubeAna
     key: config.youtubeApiKey
   });
 
+  let response: Response;
   try {
-    const response = await fetchWithTimeout(`https://www.googleapis.com/youtube/v3/videos?${query.toString()}`, {}, config.syncTimeoutMs);
-    if (!response.ok) return null;
-    const payload = await response.json() as {
-      items?: Array<{
-        id: string;
-        statistics?: {
-          viewCount?: string;
-          likeCount?: string;
-          commentCount?: string;
-        };
-      }>;
-    };
-    const item = payload.items?.[0];
-    if (!item?.id) return null;
-    return {
-      views: parseCount(item.statistics?.viewCount),
-      likes: parseCount(item.statistics?.likeCount),
-      comments: parseCount(item.statistics?.commentCount),
-      rawJson: payload as Prisma.InputJsonValue
-    };
+    response = await fetchWithTimeout(`https://www.googleapis.com/youtube/v3/videos?${query.toString()}`, {}, config.syncTimeoutMs);
   } catch {
-    return null;
+    throw new Error("YouTube stats request timed out.");
   }
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`YouTube stats request failed (${response.status}). ${message.slice(0, 120)}`.trim());
+  }
+
+  const payload = await response.json() as {
+    items?: Array<{
+      id: string;
+      statistics?: {
+        viewCount?: string;
+        likeCount?: string;
+        commentCount?: string;
+      };
+    }>;
+  };
+
+  const item = payload.items?.[0];
+  if (!item?.id) {
+    throw new Error("No YouTube statistics were returned for that video. Check the video ID and API access.");
+  }
+
+  return {
+    views: parseCount(item.statistics?.viewCount),
+    likes: parseCount(item.statistics?.likeCount),
+    comments: parseCount(item.statistics?.commentCount),
+    rawJson: payload as Prisma.InputJsonValue
+  };
 }
 
 export async function syncAnalyticsSnapshotForEvent(songId: string, publishEventId: string, snapshotDate = new Date()) {
   const event = await prisma.publishEvent.findUnique({
     where: { id: publishEventId }
   });
-  if (!event || event.songId !== songId || event.platform !== PublishPlatform.YOUTUBE) return null;
+  if (!event || event.songId !== songId || event.platform !== PublishPlatform.YOUTUBE) {
+    throw new Error("Choose a valid YouTube publish event first.");
+  }
 
   const videoId = event.externalId || extractYoutubeVideoId(event.externalUrl || event.url);
-  if (!videoId) return null;
+  if (!videoId) {
+    throw new Error("That publish event does not have a valid YouTube video ID or URL.");
+  }
 
   const imported = await fetchYoutubeAnalytics(videoId);
-  if (!imported) return null;
 
   const existing = await prisma.analyticsSnapshot.findFirst({
     where: {

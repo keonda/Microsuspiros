@@ -104,11 +104,14 @@ export async function createAnalyticsSnapshot(songId: string, formData: FormData
     fieldsAreEmpty;
 
   if (publishEventId && shouldAutoImportYoutube) {
-    const synced = await syncAnalyticsSnapshotForEvent(songId, publishEventId, snapshotDate);
-    if (synced) {
+    try {
+      await syncAnalyticsSnapshotForEvent(songId, publishEventId, snapshotDate);
       revalidatePath("/");
       revalidatePath(`/songs/${songId}`);
       redirect(`/songs/${songId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not import YouTube analytics.";
+      redirect(`/songs/${songId}?analyticsError=${encodeURIComponent(message.slice(0, 180))}`);
     }
   }
 
