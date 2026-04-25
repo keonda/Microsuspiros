@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArchiveRestore, Bot, FilePlus, FileText, FlaskConical, GitFork, Lightbulb, NotebookTabs, Search, Trash2, Upload } from "lucide-react";
+import { ArchiveRestore, Bot, FilePlus, FileText, FlaskConical, GitFork, HeartPulse, Lightbulb, NotebookTabs, Search, Trash2, Upload } from "lucide-react";
 import type { Document, Project } from "@prisma/client";
 import { createDocumentAction, restoreDocumentAction } from "@/actions/writer-actions";
 import { cn } from "@/lib/format";
@@ -27,6 +27,7 @@ export function ProjectSidebar({
         <Nav href={`/projects/${project.id}/brainstorm`} icon={<Lightbulb />} label="Brainstorm" />
         <Nav href={`/projects/${project.id}/resources`} icon={<Upload />} label="Resources" />
         <Nav href={`/projects/${project.id}/graph`} icon={<GitFork />} label="Graph" />
+        <Nav href={`/projects/${project.id}/insights`} icon={<HeartPulse />} label="Story Health" />
         <Nav href={`/projects/${project.id}/assistant`} icon={<Bot />} label="AI Assistant" />
         <Nav href={`/projects/${project.id}/search`} icon={<Search />} label="Search Project" />
       </nav>

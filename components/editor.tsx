@@ -25,6 +25,7 @@ type SaveStatus = "saved" | "saving" | "dirty" | "failed";
 type EditorPaperTheme = "light" | "sepia" | "dark" | "midnight";
 type VersionItem = {
   id: string;
+  label: string | null;
   titleSnapshot: string;
   plainTextSnapshot: string;
   wordCountSnapshot: number;
@@ -40,6 +41,27 @@ type LinkItem = {
   excerpt?: string | null;
   sourceTitle?: string;
 };
+type SceneItem = {
+  id: string;
+  title: string;
+  summary: string;
+  povCharacter: string | null;
+  location: string | null;
+  goal: string | null;
+  conflict: string | null;
+  outcome: string | null;
+  emotionalTone: string | null;
+  sortOrder: number;
+};
+type EntityItem = {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  aliases: string[];
+  _count?: { mentions: number };
+};
+type EntityCandidate = { name: string; count: number; excerpts: string[] };
 
 export function WriterEditor(props: WriterEditorProps) {
   const [title, setTitle] = useState(props.title);
@@ -50,10 +72,18 @@ export function WriterEditor(props: WriterEditorProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [focus, setFocus] = useState(false);
   const [paperTheme, setPaperTheme] = useState<EditorPaperTheme>("light");
+  const [editorWidth, setEditorWidth] = useState<"narrow" | "comfortable" | "wide">("comfortable");
+  const [editorFont, setEditorFont] = useState<"serif" | "sans" | "mono">("serif");
+  const [lineSpacing, setLineSpacing] = useState<"compact" | "comfortable" | "spacious">("comfortable");
+  const [typewriter, setTypewriter] = useState(false);
+  const [paragraphFocus, setParagraphFocus] = useState(false);
   const [selectedText, setSelectedText] = useState("");
-  const [activePanel, setActivePanel] = useState<"outline" | "backlinks" | "versions" | "links" | "ai">("outline");
+  const [activePanel, setActivePanel] = useState<"outline" | "scenes" | "backlinks" | "versions" | "links" | "entities" | "ai">("outline");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [versions, setVersions] = useState<VersionItem[]>([]);
+  const [scenes, setScenes] = useState<SceneItem[]>([]);
+  const [entities, setEntities] = useState<EntityItem[]>([]);
+  const [entityCandidates, setEntityCandidates] = useState<EntityCandidate[]>([]);
   const [outgoing, setOutgoing] = useState<LinkItem[]>([]);
   const [backlinks, setBacklinks] = useState<LinkItem[]>([]);
   const [unresolved, setUnresolved] = useState<LinkItem[]>([]);
@@ -79,18 +109,22 @@ export function WriterEditor(props: WriterEditorProps) {
   });
 
   const refreshPanels = useCallback(async () => {
-    const [versionsResponse, linksResponse] = await Promise.all([
+    const [versionsResponse, linksResponse, scenesResponse, entitiesResponse] = await Promise.all([
       fetch(`/api/documents/${props.documentId}/versions`),
-      fetch(`/api/documents/${props.documentId}/links`)
+      fetch(`/api/documents/${props.documentId}/links`),
+      fetch(`/api/documents/${props.documentId}/scenes`),
+      fetch(`/api/projects/${props.projectId}/entities`)
     ]);
     if (versionsResponse.ok) setVersions((await versionsResponse.json()).versions);
+    if (scenesResponse.ok) setScenes((await scenesResponse.json()).scenes || []);
+    if (entitiesResponse.ok) setEntities((await entitiesResponse.json()).entities || []);
     if (linksResponse.ok) {
       const json = await linksResponse.json();
       setOutgoing(json.outgoing || []);
       setBacklinks(json.backlinks || []);
       setUnresolved(json.unresolved || []);
     }
-  }, [props.documentId]);
+  }, [props.documentId, props.projectId]);
 
   const save = useCallback(async (saveMode: "autosave" | "manual" | "snapshot" = "autosave") => {
     if (!editor || status === "saving") return;
@@ -147,12 +181,20 @@ export function WriterEditor(props: WriterEditorProps) {
     function onKey(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void save();
+        void save("manual");
+      }
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setFocus((value) => !value);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        editor?.chain().focus().insertContent("[[Link target]]").run();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [save]);
+  }, [editor, save]);
 
   useEffect(() => {
     document.body.classList.toggle("writer-focus", focus);
@@ -209,12 +251,17 @@ export function WriterEditor(props: WriterEditorProps) {
                   <option value="midnight">Midnight</option>
                 </select>
               </label>
+              <SelectControl label="Width" value={editorWidth} onChange={(value) => setEditorWidth(value as typeof editorWidth)} options={["narrow", "comfortable", "wide"]} />
+              <SelectControl label="Font" value={editorFont} onChange={(value) => setEditorFont(value as typeof editorFont)} options={["serif", "sans", "mono"]} />
+              <SelectControl label="Spacing" value={lineSpacing} onChange={(value) => setLineSpacing(value as typeof lineSpacing)} options={["compact", "comfortable", "spacious"]} />
             </>
           ) : null}
           <ToolbarButton active={focus} onClick={() => setFocus((value) => !value)} label={focus ? "Exit focus mode" : "Focus mode"}><span className="text-xs font-bold">{focus ? "Exit" : "F"}</span></ToolbarButton>
           <ToolbarButton onClick={() => setFullscreen((value) => !value)} label="Fullscreen"><Maximize2 /></ToolbarButton>
           <ToolbarButton onClick={() => void save("manual")} label="Save"><Save /></ToolbarButton>
           {!focus ? <ToolbarButton onClick={() => void save("snapshot")} label="Create Snapshot"><History /></ToolbarButton> : null}
+          {!focus ? <ToolbarButton active={typewriter} onClick={() => setTypewriter((value) => !value)} label="Typewriter mode"><span className="text-xs font-bold">T</span></ToolbarButton> : null}
+          {!focus ? <ToolbarButton active={paragraphFocus} onClick={() => setParagraphFocus((value) => !value)} label="Focus current paragraph"><span className="text-xs font-bold">P</span></ToolbarButton> : null}
           {!focus ? (
             <button className="rounded-md border border-[var(--editor-border)] bg-[var(--editor-background)] px-3 py-1.5 text-xs text-[var(--editor-foreground)] hover:bg-[var(--muted)]" onClick={() => setSidebarOpen((value) => !value)} type="button">
               {sidebarOpen ? "Hide panels" : "Show panels"}
@@ -229,9 +276,22 @@ export function WriterEditor(props: WriterEditorProps) {
           {!focus ? <span>Last saved {new Date(savedAt).toLocaleString()}</span> : null}
         </div>
       </div>
-      <div className={cn("grid gap-0", sidebarOpen && !focus && "xl:grid-cols-[1fr_360px]")}>
+      <div className={cn("grid gap-0", sidebarOpen && !focus && "xl:grid-cols-[1fr_380px]")}>
         <div className={cn("mx-auto w-full px-4 py-10 sm:px-8", focus ? "max-w-4xl py-16" : "max-w-5xl")}>
-          <div className="writer-paper prose-editor mx-auto min-h-[72vh] max-w-[820px] rounded-xl px-6 py-12 sm:px-12 lg:px-16">
+          <div
+            className={cn(
+              "writer-paper prose-editor mx-auto min-h-[72vh] rounded-xl px-6 py-12 sm:px-12 lg:px-16",
+              editorWidth === "narrow" && "max-w-[700px]",
+              editorWidth === "comfortable" && "max-w-[820px]",
+              editorWidth === "wide" && "max-w-[960px]",
+              editorFont === "sans" && "editor-font-sans",
+              editorFont === "mono" && "editor-font-mono",
+              lineSpacing === "compact" && "editor-spacing-compact",
+              lineSpacing === "spacious" && "editor-spacing-spacious",
+              typewriter && "editor-typewriter",
+              paragraphFocus && "editor-paragraph-focus"
+            )}
+          >
             <EditorContent editor={editor} />
           </div>
         </div>
@@ -239,15 +299,27 @@ export function WriterEditor(props: WriterEditorProps) {
           <aside className="writer-panel border-l p-4">
             <div className="mb-4 flex flex-wrap gap-2">
               <PanelButton active={activePanel === "outline"} onClick={() => setActivePanel("outline")} icon={<List />} label="Outline" />
+              <PanelButton active={activePanel === "scenes"} onClick={() => setActivePanel("scenes")} icon={<span className="text-xs">S</span>} label="Scenes" />
               <PanelButton active={activePanel === "backlinks"} onClick={() => setActivePanel("backlinks")} icon={<GitPullRequest />} label="Backlinks" />
               <PanelButton active={activePanel === "versions"} onClick={() => setActivePanel("versions")} icon={<History />} label="Versions" />
               <PanelButton active={activePanel === "links"} onClick={() => setActivePanel("links")} icon={<LinkIcon />} label="Links" />
+              <PanelButton active={activePanel === "entities"} onClick={() => setActivePanel("entities")} icon={<span className="text-xs">E</span>} label="Entities" />
               <PanelButton active={activePanel === "ai"} onClick={() => setActivePanel("ai")} icon={<span className="text-xs">AI</span>} label="AI" />
             </div>
             {activePanel === "outline" ? (
               <Panel title="Outline">
                 {outline.map((item, index) => <p key={`${item}-${index}`} className="rounded-md px-2 py-1 text-sm text-[var(--editor-foreground)]">{item}</p>)}
                 {!outline.length ? <p className="rounded-lg border border-[var(--editor-border)] p-3 text-sm text-[var(--editor-muted)]">Headings will appear here.</p> : null}
+              </Panel>
+            ) : null}
+            {activePanel === "scenes" ? (
+              <Panel title="Scenes">
+                <ScenePanel
+                  documentId={props.documentId}
+                  scenes={scenes}
+                  onChanged={refreshPanels}
+                  onInsertBreak={(title) => editor.chain().focus().insertContent(`\n\n--- scene: ${title} ---\n\n`).run()}
+                />
               </Panel>
             ) : null}
             {activePanel === "backlinks" ? (
@@ -263,11 +335,16 @@ export function WriterEditor(props: WriterEditorProps) {
             ) : null}
             {activePanel === "versions" ? (
               <Panel title="Version History">
-                <button className="mb-3 w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]" onClick={() => void save("snapshot")} type="button">Create Snapshot</button>
+                <SnapshotForm documentId={props.documentId} onCreated={refreshPanels} />
                 {versions.map((version) => (
                   <VersionRow key={version.id} version={version} currentText={editor.getText()} onChanged={refreshPanels} />
                 ))}
                 {!versions.length ? <p className="rounded-lg border border-[var(--editor-border)] p-3 text-sm text-[var(--editor-muted)]">No versions yet. Manual saves and timed autosaves create snapshots.</p> : null}
+              </Panel>
+            ) : null}
+            {activePanel === "entities" ? (
+              <Panel title="Story Entities">
+                <EntityPanel projectId={props.projectId} entities={entities} candidates={entityCandidates} setCandidates={setEntityCandidates} onChanged={refreshPanels} />
               </Panel>
             ) : null}
             {activePanel === "links" ? (
@@ -290,6 +367,8 @@ export function WriterEditor(props: WriterEditorProps) {
                   documentId={props.documentId}
                   documentText={editor.getText()}
                   selectedText={selectedText}
+                  scenes={scenes}
+                  entities={entities}
                   onInsert={(text) => {
                     const position = editor.state.selection.to;
                     editor.chain().focus().insertContentAt(position, `\n\n${text}`).run();
@@ -347,9 +426,156 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+function SelectControl({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <label className="inline-flex items-center gap-2 rounded-md border border-[var(--editor-border)] bg-[var(--editor-background)] px-2 py-1 text-xs text-[var(--editor-foreground)]">
+      {label}
+      <select className="bg-transparent text-xs capitalize outline-none" value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function SnapshotForm({ documentId, onCreated }: { documentId: string; onCreated: () => Promise<void> }) {
+  const [label, setLabel] = useState("");
+  const [summary, setSummary] = useState("");
+
+  async function create() {
+    await fetch(`/api/documents/${documentId}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label, changeSummary: summary })
+    });
+    setLabel("");
+    setSummary("");
+    await onCreated();
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-[var(--editor-border)] bg-[var(--editor-background)] p-3">
+      <input className="mb-2 w-full rounded-md border border-[var(--editor-border)] bg-[var(--input)] px-2 py-1.5 text-sm" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Snapshot label" />
+      <textarea className="mb-2 min-h-16 w-full rounded-md border border-[var(--editor-border)] bg-[var(--input)] px-2 py-1.5 text-sm" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Change summary" />
+      <button className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]" onClick={() => void create()} type="button">
+        Create Snapshot
+      </button>
+    </div>
+  );
+}
+
+function ScenePanel({ documentId, scenes, onChanged, onInsertBreak }: { documentId: string; scenes: SceneItem[]; onChanged: () => Promise<void>; onInsertBreak: (title: string) => void }) {
+  const [title, setTitle] = useState("");
+  const [summary, setSummary] = useState("");
+
+  async function createScene() {
+    if (!title.trim()) return;
+    await fetch(`/api/documents/${documentId}/scenes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, summary })
+    });
+    setTitle("");
+    setSummary("");
+    await onChanged();
+  }
+
+  async function updateScene(scene: SceneItem, patch: Partial<SceneItem>) {
+    await fetch(`/api/scenes/${scene.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch)
+    });
+    await onChanged();
+  }
+
+  async function deleteScene(scene: SceneItem) {
+    await fetch(`/api/scenes/${scene.id}`, { method: "DELETE" });
+    await onChanged();
+  }
+
+  return (
+    <div>
+      <div className="mb-4 rounded-lg border border-[var(--editor-border)] bg-[var(--editor-background)] p-3">
+        <input className="mb-2 w-full rounded-md border border-[var(--editor-border)] bg-[var(--input)] px-2 py-1.5 text-sm" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Scene title" />
+        <textarea className="mb-2 min-h-16 w-full rounded-md border border-[var(--editor-border)] bg-[var(--input)] px-2 py-1.5 text-sm" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Scene summary" />
+        <button className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]" onClick={() => void createScene()} type="button">Add scene card</button>
+      </div>
+      <div className="space-y-3">
+        {scenes.map((scene) => (
+          <details key={scene.id} className="rounded-lg border border-[var(--editor-border)] bg-[var(--editor-background)] p-3 text-sm">
+            <summary className="cursor-pointer font-semibold">{scene.title}</summary>
+            <textarea className="mt-3 min-h-20 w-full rounded-md border border-[var(--editor-border)] bg-[var(--input)] px-2 py-1.5" defaultValue={scene.summary} onBlur={(event) => void updateScene(scene, { summary: event.target.value })} placeholder="Summary" />
+            <div className="mt-2 grid gap-2">
+              {(["povCharacter", "location", "goal", "conflict", "outcome", "emotionalTone"] as const).map((field) => (
+                <input key={field} className="rounded-md border border-[var(--editor-border)] bg-[var(--input)] px-2 py-1.5" defaultValue={String(scene[field] || "")} onBlur={(event) => void updateScene(scene, { [field]: event.target.value } as Partial<SceneItem>)} placeholder={field.replace(/([A-Z])/g, " $1").toLowerCase()} />
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="rounded-md border border-[var(--editor-border)] px-2 py-1 text-xs" onClick={() => onInsertBreak(scene.title)} type="button">Insert scene break</button>
+              <button className="rounded-md border border-clay/40 px-2 py-1 text-xs text-clay" onClick={() => void deleteScene(scene)} type="button">Delete</button>
+            </div>
+          </details>
+        ))}
+        {!scenes.length ? <p className="rounded-lg border border-[var(--editor-border)] p-3 text-sm text-[var(--editor-muted)]">Plan this chapter as scenes with POV, goal, conflict, and outcome.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function EntityPanel({ projectId, entities, candidates, setCandidates, onChanged }: { projectId: string; entities: EntityItem[]; candidates: EntityCandidate[]; setCandidates: (items: EntityCandidate[]) => void; onChanged: () => Promise<void> }) {
+  async function detect() {
+    const response = await fetch(`/api/projects/${projectId}/entities`, { method: "PUT" });
+    const json = await response.json();
+    setCandidates(json.candidates || []);
+  }
+
+  async function create(candidate: EntityCandidate, type = "CHARACTER") {
+    await fetch(`/api/projects/${projectId}/entities`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: candidate.name, type, description: candidate.excerpts[0] || "" })
+    });
+    setCandidates(candidates.filter((item) => item.name !== candidate.name));
+    await onChanged();
+  }
+
+  return (
+    <div className="space-y-3">
+      <button className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]" onClick={() => void detect()} type="button">Detect possible entities</button>
+      {candidates.map((candidate) => (
+        <div key={candidate.name} className="rounded-lg border border-[var(--editor-border)] bg-[var(--editor-background)] p-3 text-sm">
+          <p className="font-semibold">{candidate.name}</p>
+          <p className="text-xs text-[var(--editor-muted)]">{candidate.count} mentions</p>
+          <p className="mt-1 text-xs text-[var(--editor-muted)]">{candidate.excerpts[0]}</p>
+          <div className="mt-2 flex gap-2">
+            <button className="rounded-md border border-[var(--editor-border)] px-2 py-1 text-xs" onClick={() => void create(candidate, "CHARACTER")} type="button">Character</button>
+            <button className="rounded-md border border-[var(--editor-border)] px-2 py-1 text-xs" onClick={() => void create(candidate, "LOCATION")} type="button">Location</button>
+            <button className="rounded-md border border-[var(--editor-border)] px-2 py-1 text-xs" onClick={() => void create(candidate, "UNKNOWN")} type="button">Other</button>
+          </div>
+        </div>
+      ))}
+      {entities.map((entity) => (
+        <div key={entity.id} className="rounded-lg border border-[var(--editor-border)] bg-[var(--editor-background)] p-3 text-sm">
+          <p className="font-semibold">{entity.name}</p>
+          <p className="text-xs text-[var(--editor-muted)]">{entity.type.toLowerCase()} - {entity._count?.mentions || 0} mentions</p>
+          {entity.description ? <p className="mt-2 text-xs text-[var(--editor-muted)]">{entity.description}</p> : null}
+          {entity.aliases.length ? <p className="mt-2 text-xs text-[var(--editor-muted)]">Aliases: {entity.aliases.join(", ")}</p> : null}
+        </div>
+      ))}
+      {!entities.length && !candidates.length ? <p className="rounded-lg border border-[var(--editor-border)] p-3 text-sm text-[var(--editor-muted)]">Detect recurring names to confirm characters, places, objects, and concepts.</p> : null}
+    </div>
+  );
+}
+
 function VersionRow({ version, currentText, onChanged }: { version: VersionItem; currentText: string; onChanged: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const delta = countWords(currentText) - version.wordCountSnapshot;
+  const preview = version.plainTextSnapshot.replace(/\s+/g, " ").slice(0, 180);
+  const currentWords = countWords(currentText);
 
   async function post(path: string) {
     const response = await fetch(path, { method: "POST" });
@@ -362,14 +588,18 @@ function VersionRow({ version, currentText, onChanged }: { version: VersionItem;
   return (
     <article className="mb-3 rounded-md border border-[var(--editor-border)] bg-[var(--editor-background)] p-3 text-sm text-[var(--editor-foreground)]">
       <button className="w-full text-left font-semibold" onClick={() => setOpen((value) => !value)} type="button">
-        {new Date(version.createdAt).toLocaleString()}
+        {version.label || new Date(version.createdAt).toLocaleString()}
       </button>
       <p className="text-xs text-[var(--editor-muted)]">
         {version.changeSummary || "Snapshot"} - {version.wordCountSnapshot} words - current delta {delta >= 0 ? "+" : ""}
         {delta}
       </p>
+      <p className="mt-2 text-xs text-[var(--editor-muted)]">{preview || "(empty version)"}</p>
       {open ? (
         <div className="mt-3">
+          <div className="mb-2 rounded border border-[var(--editor-border)] bg-[var(--muted)] p-2 text-xs">
+            Diff summary: current draft has {currentWords.toLocaleString()} words; selected version has {version.wordCountSnapshot.toLocaleString()} words.
+          </div>
           <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded border border-[var(--editor-border)] bg-[var(--muted)] p-2 text-xs text-[var(--editor-foreground)]">{version.plainTextSnapshot || "(empty)"}</pre>
           <div className="mt-2 flex gap-2">
             <button className="rounded-md border border-[var(--editor-border)] bg-[var(--editor-background)] px-2 py-1 text-xs" onClick={() => void post(`/api/document-versions/${version.id}/restore`)} type="button">Restore</button>

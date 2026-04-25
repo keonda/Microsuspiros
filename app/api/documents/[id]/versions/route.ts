@@ -3,7 +3,10 @@ import { requireUser } from "@/lib/auth";
 import { createDocumentVersion } from "@/lib/document-versions";
 import { prisma } from "@/lib/prisma";
 
-const snapshotSchema = z.object({ changeSummary: z.string().trim().max(300).optional() });
+const snapshotSchema = z.object({
+  label: z.string().trim().max(120).optional(),
+  changeSummary: z.string().trim().max(300).optional()
+});
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -24,6 +27,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = snapshotSchema.parse(await request.json().catch(() => ({})));
   const document = await prisma.document.findFirst({ where: { id, userId: user.id } });
   if (!document) return Response.json({ error: "Document not found." }, { status: 404 });
-  const version = await createDocumentVersion(prisma, document, body.changeSummary || "Manual snapshot");
+  const version = await createDocumentVersion(prisma, document, body.changeSummary || "Manual snapshot", body.label || undefined);
   return Response.json({ ok: true, version });
 }

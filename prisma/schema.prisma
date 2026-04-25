@@ -396,10 +396,21 @@ enum LinkableType {
   RESEARCH_NOTE
   BRAINSTORM_CARD
   RESOURCE
+  SCENE
+  STORY_ENTITY
 }
 
 enum AIProvider {
   GROQ
+}
+
+enum StoryEntityType {
+  CHARACTER
+  LOCATION
+  OBJECT
+  ORGANIZATION
+  CONCEPT
+  UNKNOWN
 }
 
 enum ResourceExtractionStatus {
@@ -440,6 +451,9 @@ model User {
   brainstormCards   BrainstormCard[]
   resources         Resource[]
   pdfImportSessions PdfImportSession[]
+  scenes            Scene[]
+  storyEntities     StoryEntity[]
+  entityMentions    EntityMention[]
   aiSettings        AISettings?
 
   @@index([role])
@@ -481,6 +495,9 @@ model Project {
   resources         Resource[]
   tags              WriterTag[]
   pdfImportSessions PdfImportSession[]
+  scenes            Scene[]
+  storyEntities     StoryEntity[]
+  entityMentions    EntityMention[]
 
   @@index([userId])
   @@index([status])
@@ -532,6 +549,7 @@ model Document {
   tags     WriterTag[] @relation("DocumentTags")
   resourceLinks ResourceLink[] @relation("DocumentResourceLinks")
   versions DocumentVersion[]
+  scenes Scene[]
 
   @@index([projectId, kind, sortOrder])
   @@index([userId])
@@ -542,6 +560,7 @@ model DocumentVersion {
   id                  String   @id @default(cuid())
   documentId          String
   userId              String
+  label               String?
   titleSnapshot       String
   contentJsonSnapshot Json?
   contentHtmlSnapshot String   @default("")
@@ -554,6 +573,77 @@ model DocumentVersion {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([documentId, createdAt])
+  @@index([userId])
+}
+
+model Scene {
+  id            String   @id @default(cuid())
+  documentId    String
+  projectId     String
+  userId        String
+  title         String
+  summary       String   @default("")
+  povCharacter  String?
+  location      String?
+  goal          String?
+  conflict      String?
+  outcome       String?
+  emotionalTone String?
+  sortOrder     Int      @default(0)
+  startMarker   String?
+  endMarker     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, sortOrder])
+  @@index([projectId])
+  @@index([userId])
+}
+
+model StoryEntity {
+  id           String          @id @default(cuid())
+  projectId    String
+  userId       String
+  name         String
+  type         StoryEntityType @default(UNKNOWN)
+  description  String          @default("")
+  aliases      String[]        @default([])
+  linkedNoteId String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mentions EntityMention[]
+
+  @@unique([projectId, name])
+  @@index([projectId, type])
+  @@index([userId])
+  @@index([linkedNoteId])
+}
+
+model EntityMention {
+  id         String       @id @default(cuid())
+  projectId  String
+  entityId   String
+  sourceType LinkableType
+  sourceId   String
+  excerpt    String
+  position   Int?
+  createdAt  DateTime     @default(now())
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  entity StoryEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  user   User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+
+  @@index([projectId])
+  @@index([entityId])
+  @@index([sourceType, sourceId])
   @@index([userId])
 }
 

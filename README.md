@@ -153,3 +153,31 @@ Future TODO:
 - Toolbar readable
 - Inputs readable
 - Right panels readable
+
+## Phase 3 Story Intelligence
+
+Phase 3 adds the first story-intelligence layer without making AI mandatory:
+
+- Version history now supports named snapshots and change summaries. Restores still create a backup version first, and old versions can be duplicated into a branch document.
+- Manuscript documents can have scene cards with POV, location, goal, conflict, outcome, emotional tone, and an optional `--- scene: Scene Title ---` marker inserted into the editor.
+- Story entities track confirmed characters, locations, objects, organizations, concepts, and unknown terms. The editor can detect recurring capitalized names for user confirmation, then stores mentions across documents.
+- The graph includes documents, notes, research, resources, scenes, and story entities, plus simple insights for unresolved links and frequent entities.
+- The AI assistant supports context modes for current document, linked-note context, scenes, entities, and selected project context. AI output remains suggestion-only.
+- Project exports support title-page, chapter-title, and scene-separator options through query parameters.
+
+Keyboard shortcuts:
+
+- `Ctrl/Cmd + S`: manual save
+- `Ctrl/Cmd + B`: bold
+- `Ctrl/Cmd + I`: italic
+- `Ctrl/Cmd + Alt + F`: focus mode
+- `Ctrl/Cmd + K`: insert a wiki-link placeholder
+
+Export examples:
+
+- Current document TXT/HTML: use the document toolbar.
+- Full manuscript TXT: `/api/exports/projects/{projectId}?format=txt`
+- Full manuscript with scene separators: `/api/exports/projects/{projectId}?format=txt&sceneSeparators=1`
+- Omit title page or chapter titles with `titlePage=0` or `chapterTitles=0`.
+
+Coolify deployment note: run Prisma migrations after deploying Phase 3 so `Scene`, `StoryEntity`, `EntityMention`, and version labels exist before opening the editor.

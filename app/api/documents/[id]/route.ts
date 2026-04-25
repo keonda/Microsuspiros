@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createDocumentVersion, shouldCreateTimedVersion } from "@/lib/document-versions";
 import { syncInternalLinks } from "@/lib/internal-links";
 import { prisma } from "@/lib/prisma";
+import { syncEntityMentions } from "@/lib/story-entities";
 import { wordCount } from "@/lib/writer-utils";
 
 const saveSchema = z.object({
@@ -43,6 +44,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   await syncInternalLinks(prisma, {
     projectId: document.projectId,
+    sourceType: "DOCUMENT",
+    sourceId: document.id,
+    text: `${document.title}\n${document.plainText}`
+  });
+  await syncEntityMentions(prisma, {
+    projectId: document.projectId,
+    userId: user.id,
     sourceType: "DOCUMENT",
     sourceId: document.id,
     text: `${document.title}\n${document.plainText}`

@@ -5,12 +5,14 @@ export const VERSION_INTERVAL_MS = 12 * 60 * 1000;
 export async function createDocumentVersion(
   prisma: PrismaClient,
   document: Pick<Document, "id" | "userId" | "title" | "contentJson" | "contentHtml" | "plainText" | "wordCount">,
-  changeSummary?: string
+  changeSummary?: string,
+  label?: string
 ) {
   return prisma.documentVersion.create({
     data: {
       documentId: document.id,
       userId: document.userId,
+      label: label || null,
       titleSnapshot: document.title,
       contentJsonSnapshot: document.contentJson ?? undefined,
       contentHtmlSnapshot: document.contentHtml,

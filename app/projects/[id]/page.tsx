@@ -53,6 +53,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <div className="mt-5 flex gap-2">
             <a className="rounded-md border border-stone-200 px-3 py-2 text-sm" href={`/api/exports/projects/${project.id}?format=html`}>Export HTML</a>
             <a className="rounded-md border border-stone-200 px-3 py-2 text-sm" href={`/api/exports/projects/${project.id}?format=txt`}>Export TXT</a>
+            <a className="rounded-md border border-stone-200 px-3 py-2 text-sm" href={`/api/exports/projects/${project.id}?format=txt&sceneSeparators=1`}>TXT + scenes</a>
           </div>
           <form action={uploadPdfForImportAction.bind(null, project.id)} className="mt-5 rounded-lg bg-paper p-4 ring-1 ring-stone-200">
             <h3 className="font-serif text-lg font-bold">Import from PDF</h3>

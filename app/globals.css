@@ -175,6 +175,37 @@ body.writer-focus {
   caret-color: var(--primary);
 }
 
+.editor-font-sans .ProseMirror {
+  font-family: var(--font-sans);
+}
+
+.editor-font-mono .ProseMirror {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.editor-spacing-compact .ProseMirror {
+  line-height: 1.65;
+}
+
+.editor-spacing-spacious .ProseMirror {
+  line-height: 2.25;
+}
+
+.editor-typewriter .ProseMirror {
+  padding-top: 22vh;
+  padding-bottom: 32vh;
+}
+
+.editor-paragraph-focus .ProseMirror p {
+  opacity: 0.62;
+  transition: opacity 0.15s ease;
+}
+
+.editor-paragraph-focus .ProseMirror-focused p:hover,
+.editor-paragraph-focus .ProseMirror-focused p:focus {
+  opacity: 1;
+}
+
 .prose-editor .ProseMirror-focused {
   outline: none;
 }
