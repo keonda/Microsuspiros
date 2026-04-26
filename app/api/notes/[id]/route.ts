@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { apiError, handleApiError } from "@/lib/http";
-import { extractWikiTitles } from "@/lib/notes";
+import { syncNoteLinks } from "@/lib/noteLinks";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -14,20 +14,6 @@ const updateSchema = z.object({
   tags: z.array(z.string().min(1).max(40)).optional(),
   createVersion: z.boolean().default(false)
 });
-
-async function syncLinks(userId: string, noteId: string, content: string) {
-  const titles = extractWikiTitles(content);
-  await prisma.noteLink.deleteMany({ where: { sourceNoteId: noteId } });
-  for (const title of titles) {
-    const target = await prisma.note.findFirst({
-      where: { userId, title: { equals: title, mode: "insensitive" } },
-      select: { id: true }
-    });
-    await prisma.noteLink.create({
-      data: { userId, sourceNoteId: noteId, targetNoteId: target?.id, targetTitle: title }
-    });
-  }
-}
 
 async function syncTags(userId: string, noteId: string, tags: string[]) {
   await prisma.noteTag.deleteMany({ where: { noteId } });
@@ -82,7 +68,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       }
     });
     if (body.tags) await syncTags(user.id, note.id, body.tags);
-    await syncLinks(user.id, note.id, body.content ?? note.content);
+    await syncNoteLinks(user.id, note.id, body.content ?? note.content);
     return NextResponse.json({ note });
   } catch (error) {
     return handleApiError(error);

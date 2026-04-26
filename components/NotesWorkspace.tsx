@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, FilePlus2, Focus, Library, LogOut, Moon, PanelLeftClose, Save, Search, Settings, Sun } from "lucide-react";
+import { Brain, CheckCircle2, FilePlus2, Focus, Library, LogOut, Moon, PanelLeftClose, Save, Search, Send, Settings, Sun } from "lucide-react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { ThemeBoot } from "@/components/ThemeBoot";
 
@@ -21,6 +21,13 @@ type Note = {
 };
 type Notebook = { id: string; title: string; parentId: string | null; notes: { id: string; title: string }[] };
 type Settings = { theme: string; focusMode: boolean; editorMode: string };
+type AiProposal = {
+  intent: "create_note" | "append_note" | "replace_note" | "none";
+  title?: string;
+  content?: string;
+  appendContent?: string;
+  reply: string;
+};
 
 const aiActions = [
   ["summarize", "Summarize"],
@@ -53,6 +60,9 @@ export function NotesWorkspace({
   const [status, setStatus] = useState("Saved");
   const [aiResult, setAiResult] = useState("");
   const [aiLoading, setAiLoading] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessage, setChatMessage] = useState("");
+  const [proposal, setProposal] = useState<AiProposal | null>(null);
   const [wikiSuggestions, setWikiSuggestions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
@@ -144,6 +154,47 @@ export function NotesWorkspace({
     const data = await response.json();
     setAiLoading("");
     setAiResult(response.ok ? data.result : data.error);
+  }
+
+  async function sendAssistantChat() {
+    if (!chatInput.trim()) return;
+    setAiLoading("chat");
+    setChatMessage("");
+    setProposal(null);
+    const response = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: chatInput, currentNoteId: selected?.id })
+    });
+    const data = await response.json();
+    setAiLoading("");
+    if (!response.ok) {
+      setChatMessage(data.error ?? "Could not read that request.");
+      return;
+    }
+    setProposal(data.proposal);
+    setChatMessage(data.proposal.reply);
+  }
+
+  async function applyAssistantProposal() {
+    if (!proposal || proposal.intent === "none") return;
+    setAiLoading("apply");
+    const response = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: chatInput || proposal.reply, apply: true, proposal })
+    });
+    const data = await response.json();
+    setAiLoading("");
+    if (!response.ok) {
+      setChatMessage(data.error ?? "Could not apply that change.");
+      return;
+    }
+    setChatMessage(data.reply);
+    setProposal(null);
+    setChatInput("");
+    await refreshNotes();
+    if (data.note?.id) setSelectedId(data.note.id);
   }
 
   async function setTheme(theme: string) {
@@ -343,6 +394,32 @@ export function NotesWorkspace({
             </div>
             <div className="mt-4 rounded-md bg-paper p-3 text-sm leading-6 dark:bg-zinc-950">
               {aiResult || "AI suggestions appear here. They never overwrite your note automatically."}
+            </div>
+            <div className="mt-5 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <p className="mb-2 text-sm font-semibold">Ask it to file notes</p>
+              <textarea
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                placeholder={'Try: add "SSH keys rotated" to servers.md'}
+                className="h-24 w-full resize-none rounded-md border border-zinc-200 bg-white p-3 text-sm outline-none focus:border-moss dark:border-zinc-700 dark:bg-zinc-950"
+              />
+              <button onClick={sendAssistantChat} className="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-ink px-3 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-950">
+                <Send size={15} /> {aiLoading === "chat" ? "Reading..." : "Plan note action"}
+              </button>
+              {chatMessage ? <p className="mt-3 rounded-md bg-paper p-3 text-sm leading-6 dark:bg-zinc-950">{chatMessage}</p> : null}
+              {proposal && proposal.intent !== "none" ? (
+                <div className="mt-3 rounded-md border border-moss/30 bg-mist/50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+                  <p className="font-semibold">
+                    {proposal.intent.replace("_", " ")} · {proposal.title}
+                  </p>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-xs dark:bg-zinc-950">
+                    {proposal.appendContent || proposal.content}
+                  </pre>
+                  <button onClick={applyAssistantProposal} className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-moss px-3 py-2 text-sm text-white">
+                    <CheckCircle2 size={15} /> {aiLoading === "apply" ? "Applying..." : "Apply to notes"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </aside>
         ) : null}
