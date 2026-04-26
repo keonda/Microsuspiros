@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-paper text-ink antialiased dark:bg-zinc-950 dark:text-zinc-100;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.prose-note {
+  @apply max-w-none text-sm leading-7 text-zinc-800 dark:text-zinc-200;
+}
+
+.prose-note h1 {
+  @apply mb-4 mt-6 text-3xl font-semibold;
+}
+
+.prose-note h2 {
+  @apply mb-3 mt-5 text-2xl font-semibold;
+}
+
+.prose-note h3 {
+  @apply mb-2 mt-4 text-xl font-semibold;
+}
+
+.prose-note p {
+  @apply my-3;
+}
+
+.prose-note a {
+  @apply text-clay underline underline-offset-4 dark:text-amber-300;
+}
+
+.prose-note ul {
+  @apply my-3 list-disc pl-6;
+}
+
+.prose-note ol {
+  @apply my-3 list-decimal pl-6;
+}
+
+.prose-note blockquote {
+  @apply my-4 border-l-4 border-moss/40 pl-4 italic text-zinc-600 dark:text-zinc-300;
+}
+
+.prose-note code {
+  @apply rounded bg-zinc-200 px-1 py-0.5 text-xs dark:bg-zinc-800;
+}
+
+.prose-note pre {
+  @apply my-4 overflow-auto rounded-lg bg-zinc-900 p-4 text-zinc-100;
+}
+
+.prose-note table {
+  @apply my-4 w-full border-collapse text-left;
+}
+
+.prose-note th,
+.prose-note td {
+  @apply border border-zinc-300 px-3 py-2 dark:border-zinc-700;
+}

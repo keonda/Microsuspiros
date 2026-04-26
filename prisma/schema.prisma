@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum MediaStorageProvider {
+  local
+  s3
+  r2
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  passwordHash String
+  role         UserRole      @default(user)
+  disabled     Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  settings     UserSettings?
+  aiSettings   AiSettings?
+  notes        Note[]
+  notebooks    Notebook[]
+  tags         Tag[]
+  mediaFiles   MediaFile[]
+  versions     NoteVersion[]
+  noteLinks    NoteLink[]
+}
+
+model UserSettings {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  theme       String   @default("system")
+  focusMode   Boolean  @default(false)
+  editorMode  String   @default("split")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AiSettings {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  groqApiKeyEncrypted String?
+  groqModel           String    @default("llama-3.1-8b-instant")
+  keyLastFour         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notebook {
+  id        String     @id @default(cuid())
+  userId    String
+  parentId  String?
+  title     String
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Notebook?  @relation("NotebookTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Notebook[] @relation("NotebookTree")
+  notes     Note[]
+
+  @@index([userId, parentId, position])
+}
+
+model Note {
+  id         String        @id @default(cuid())
+  userId     String
+  notebookId String?
+  title      String
+  content    String        @default("")
+  position   Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notebook   Notebook?     @relation(fields: [notebookId], references: [id], onDelete: SetNull)
+  tags       NoteTag[]
+  outgoing   NoteLink[]    @relation("OutgoingLinks")
+  incoming   NoteLink[]    @relation("IncomingLinks")
+  mediaFiles MediaFile[]
+  versions   NoteVersion[]
+
+  @@index([userId, notebookId, position])
+  @@index([userId, updatedAt])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  color     String?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     NoteTag[]
+
+  @@unique([userId, name])
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+}
+
+model NoteLink {
+  id           String   @id @default(cuid())
+  userId       String
+  sourceNoteId String
+  targetNoteId String?
+  targetTitle  String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceNote   Note     @relation("OutgoingLinks", fields: [sourceNoteId], references: [id], onDelete: Cascade)
+  targetNote   Note?    @relation("IncomingLinks", fields: [targetNoteId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceNoteId, targetTitle])
+  @@index([userId, targetTitle])
+}
+
+model MediaFile {
+  id              String               @id @default(cuid())
+  userId          String
+  noteId          String?
+  filename        String
+  originalName    String
+  mimeType        String
+  sizeBytes       Int
+  storageProvider MediaStorageProvider @default(local)
+  storageKey      String
+  url             String
+  createdAt       DateTime             @default(now())
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note            Note?                @relation(fields: [noteId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+model NoteVersion {
+  id        String   @id @default(cuid())
+  userId    String
+  noteId    String
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt])
+}
