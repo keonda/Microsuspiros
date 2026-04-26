@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CheckCircle2, FilePlus2, Focus, Library, LogOut, Moon, PanelLeftClose, Save, Search, Send, Settings, Sun } from "lucide-react";
+import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Brain, CheckCircle2, FilePlus2, Focus, Folder, Inbox, Library, LogOut, Moon, PanelLeftClose, Plus, Save, Search, Send, Settings, Sun } from "lucide-react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { ThemeBoot } from "@/components/ThemeBoot";
 
@@ -63,6 +63,8 @@ export function NotesWorkspace({
   const [chatInput, setChatInput] = useState("");
   const [chatMessage, setChatMessage] = useState("");
   const [proposal, setProposal] = useState<AiProposal | null>(null);
+  const [draggingNoteId, setDraggingNoteId] = useState("");
+  const [dropTargetId, setDropTargetId] = useState("");
   const [wikiSuggestions, setWikiSuggestions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
@@ -90,6 +92,14 @@ export function NotesWorkspace({
     setNotes(data.notes ?? []);
   }
 
+  async function refreshLibrary() {
+    const [notesResponse, notebooksResponse] = await Promise.all([fetch("/api/notes"), fetch("/api/notebooks")]);
+    const notesData = await notesResponse.json();
+    const notebooksData = await notebooksResponse.json();
+    setNotes(notesData.notes ?? []);
+    setNotebooks(notebooksData.notebooks ?? []);
+  }
+
   async function saveNote(version = true) {
     if (!selected) return;
     setStatus("Saving...");
@@ -107,15 +117,23 @@ export function NotesWorkspace({
     if (response.ok) refreshNotes();
   }
 
-  async function createNote(title = "Untitled note") {
+  async function createNote(title = "Untitled note", notebookId?: string | null) {
     const response = await fetch("/api/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, content: `# ${title}\n\n` })
+      body: JSON.stringify({ title, content: `# ${title}\n\n`, notebookId })
     });
     const data = await response.json();
-    await refreshNotes();
-    setSelectedId(data.note.id);
+    if (response.ok) {
+      await refreshLibrary();
+      setSelectedId(data.note.id);
+    }
+  }
+
+  async function createNoteInNotebook(notebook: Notebook) {
+    const title = prompt(`New note in ${notebook.title}`, "Untitled note");
+    if (!title) return;
+    await createNote(title, notebook.id);
   }
 
   async function createNotebook() {
@@ -128,6 +146,51 @@ export function NotesWorkspace({
     });
     const data = await response.json();
     if (response.ok) setNotebooks((current) => [...current, { ...data.notebook, notes: [] }]);
+  }
+
+  async function moveNote(noteId: string, notebookId: string | null) {
+    const note = notes.find((item) => item.id === noteId);
+    if (!note) return;
+    setDraggingNoteId("");
+    setDropTargetId("");
+    setNotes((current) => current.map((item) => (item.id === noteId ? { ...item, notebookId } : item)));
+    setNotebooks((current) =>
+      current.map((notebook) => ({
+        ...notebook,
+        notes:
+          notebook.id === notebookId
+            ? [...notebook.notes.filter((item) => item.id !== noteId), { id: note.id, title: note.title }]
+            : notebook.notes.filter((item) => item.id !== noteId)
+      }))
+    );
+    const response = await fetch(`/api/notes/${noteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notebookId })
+    });
+    if (!response.ok) {
+      await refreshLibrary();
+      return;
+    }
+    await refreshLibrary();
+  }
+
+  function startNoteDrag(event: DragEvent, noteId: string) {
+    event.dataTransfer.setData("text/plain", noteId);
+    event.dataTransfer.effectAllowed = "move";
+    setDraggingNoteId(noteId);
+  }
+
+  function allowNotebookDrop(event: DragEvent, notebookId: string | null) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTargetId(notebookId ?? "unfiled");
+  }
+
+  async function dropNote(event: DragEvent, notebookId: string | null) {
+    event.preventDefault();
+    const noteId = event.dataTransfer.getData("text/plain") || draggingNoteId;
+    if (noteId) await moveNote(noteId, notebookId);
   }
 
   async function openWiki(title: string) {
@@ -271,17 +334,80 @@ export function NotesWorkspace({
                 Notebooks <button onClick={createNotebook}>+</button>
               </div>
               {notebooks.map((notebook) => (
-                <div key={notebook.id} className="rounded-md px-2 py-1 text-sm text-zinc-700 dark:text-zinc-300">
-                  {notebook.title}
+                <div
+                  key={notebook.id}
+                  onDragOver={(event) => allowNotebookDrop(event, notebook.id)}
+                  onDragLeave={() => setDropTargetId("")}
+                  onDrop={(event) => dropNote(event, notebook.id)}
+                  className={`mb-2 rounded-md border px-2 py-2 text-sm ${
+                    dropTargetId === notebook.id
+                      ? "border-moss bg-mist/70 dark:border-emerald-600 dark:bg-emerald-950/40"
+                      : "border-transparent bg-zinc-50 dark:bg-zinc-950"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2 text-zinc-700 dark:text-zinc-300">
+                      <Folder size={15} />
+                      <span className="truncate font-medium">{notebook.title}</span>
+                    </div>
+                    <button onClick={() => createNoteInNotebook(notebook)} className="rounded p-1 hover:bg-white dark:hover:bg-zinc-800" title={`New note in ${notebook.title}`}>
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  {notebook.notes.length ? (
+                    <div className="mt-2 space-y-1">
+                      {notebook.notes.map((note) => (
+                        <button
+                          key={note.id}
+                          draggable
+                          onDragStart={(event) => startNoteDrag(event, note.id)}
+                          onDragEnd={() => {
+                            setDraggingNoteId("");
+                            setDropTargetId("");
+                          }}
+                          onClick={() => setSelectedId(note.id)}
+                          className={`w-full rounded px-2 py-1 text-left text-xs ${
+                            note.id === selected?.id ? "bg-white text-ink shadow-sm dark:bg-zinc-800 dark:text-white" : "text-zinc-600 hover:bg-white dark:text-zinc-400 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          <span className="block truncate">{note.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 rounded border border-dashed border-zinc-300 px-2 py-2 text-xs text-zinc-500 dark:border-zinc-700">
+                      Drop notes here
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
             <div className="mb-4">
-              <p className="mb-2 text-xs font-semibold uppercase text-zinc-500">Notes</p>
+              <div
+                onDragOver={(event) => allowNotebookDrop(event, null)}
+                onDragLeave={() => setDropTargetId("")}
+                onDrop={(event) => dropNote(event, null)}
+                className={`mb-3 rounded-md border border-dashed px-2 py-2 text-xs ${
+                  dropTargetId === "unfiled"
+                    ? "border-moss bg-mist/70 text-ink dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-zinc-100"
+                    : "border-zinc-300 text-zinc-500 dark:border-zinc-700"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Inbox size={14} /> Drop here to remove from notebook
+                </div>
+              </div>
+              <p className="mb-2 text-xs font-semibold uppercase text-zinc-500">All notes</p>
               <div className="space-y-1">
                 {filtered.map((note) => (
                   <button
                     key={note.id}
+                    draggable
+                    onDragStart={(event) => startNoteDrag(event, note.id)}
+                    onDragEnd={() => {
+                      setDraggingNoteId("");
+                      setDropTargetId("");
+                    }}
                     onClick={() => setSelectedId(note.id)}
                     className={`w-full rounded-md px-2 py-2 text-left text-sm ${note.id === selected?.id ? "bg-mist text-ink dark:bg-zinc-800 dark:text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                   >
