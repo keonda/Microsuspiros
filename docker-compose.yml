@@ -22,6 +22,7 @@ services:
       ENCRYPTION_SECRET: replace-with-a-32-byte-or-longer-random-secret
       UPLOAD_DIR: /app/public/uploads
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      AUTH_COOKIE_SECURE: "false"
     ports:
       - "3000:3000"
     volumes:

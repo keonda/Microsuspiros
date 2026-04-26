@@ -43,8 +43,11 @@ Use the included `Dockerfile` and configure these environment variables in Cooli
 - `ENCRYPTION_SECRET`
 - `UPLOAD_DIR`
 - `NEXT_PUBLIC_APP_URL`
+- `AUTH_COOKIE_SECURE`
 
 Run `npx prisma migrate deploy` during deployment or as a one-off command after the database is available.
+
+For a temporary HTTP-only Coolify deployment, set `NEXT_PUBLIC_APP_URL` to your `http://` URL and `AUTH_COOKIE_SECURE=false`. Once HTTPS is enabled, use an `https://` app URL and set `AUTH_COOKIE_SECURE=true` or remove it to let the app infer secure cookies from the URL.
 
 ## Implemented In This Foundation
 

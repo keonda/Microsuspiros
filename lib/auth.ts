@@ -6,6 +6,13 @@ import { prisma } from "@/lib/prisma";
 
 const cookieName = "microsuspiros_session";
 
+function useSecureCookie() {
+  if (process.env.AUTH_COOKIE_SECURE) {
+    return process.env.AUTH_COOKIE_SECURE === "true";
+  }
+  return process.env.NEXT_PUBLIC_APP_URL?.startsWith("https://") ?? false;
+}
+
 function secret() {
   const value = process.env.AUTH_SECRET;
   if (!value) throw new Error("AUTH_SECRET is required");
@@ -30,7 +37,7 @@ export async function createSession(userId: string) {
   cookies().set(cookieName, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecureCookie(),
     path: "/",
     maxAge: 60 * 60 * 24 * 30
   });
