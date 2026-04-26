@@ -25,3 +25,7 @@ export function uploadRoot() {
 export function publicUploadUrl(filename: string) {
   return `/uploads/${filename}`;
 }
+
+export function mediaFileUrl(id: string) {
+  return `/api/media/${id}/file`;
+}

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { apiError, handleApiError } from "@/lib/http";
-import { allowedMimeTypes, maxUploadBytes, publicUploadUrl, uploadRoot } from "@/lib/uploads";
+import { allowedMimeTypes, maxUploadBytes, mediaFileUrl, uploadRoot } from "@/lib/uploads";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +52,14 @@ export async function POST(request: Request) {
         mimeType: file.type,
         sizeBytes: file.size,
         storageKey: filename,
-        url: publicUploadUrl(filename)
+        url: ""
       }
     });
-    return NextResponse.json({ media });
+    const mediaWithUrl = await prisma.mediaFile.update({
+      where: { id: media.id },
+      data: { url: mediaFileUrl(media.id) }
+    });
+    return NextResponse.json({ media: mediaWithUrl });
   } catch (error) {
     return handleApiError(error);
   }

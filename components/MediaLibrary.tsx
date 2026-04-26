@@ -4,6 +4,10 @@ import { useState } from "react";
 
 type Media = { id: string; originalName: string; mimeType: string; sizeBytes: number; url: string };
 
+function mediaUrl(file: Media) {
+  return `/api/media/${file.id}/file`;
+}
+
 export function MediaLibrary({ initialFiles }: { initialFiles: Media[] }) {
   const [files, setFiles] = useState(initialFiles);
   const [message, setMessage] = useState("");
@@ -28,11 +32,11 @@ export function MediaLibrary({ initialFiles }: { initialFiles: Media[] }) {
           <article key={file.id} className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
             <p className="truncate font-medium">{file.originalName}</p>
             <p className="mb-3 text-xs text-zinc-500">{file.mimeType} · {(file.sizeBytes / 1024).toFixed(1)} KB</p>
-            {file.mimeType.startsWith("image/") ? <img src={file.url} alt={file.originalName} className="max-h-64 rounded-md object-contain" /> : null}
-            {file.mimeType.startsWith("video/") ? <video src={file.url} controls className="max-h-64 w-full rounded-md" /> : null}
-            {file.mimeType.startsWith("audio/") ? <audio src={file.url} controls className="w-full" /> : null}
-            {file.mimeType === "application/pdf" ? <a className="text-clay dark:text-amber-300" href={file.url} target="_blank">Open PDF</a> : null}
-            <code className="mt-3 block rounded bg-zinc-100 p-2 text-xs dark:bg-zinc-950">![{file.originalName}]({file.url})</code>
+            {file.mimeType.startsWith("image/") ? <img src={mediaUrl(file)} alt={file.originalName} className="max-h-64 rounded-md object-contain" /> : null}
+            {file.mimeType.startsWith("video/") ? <video src={mediaUrl(file)} controls className="max-h-64 w-full rounded-md" /> : null}
+            {file.mimeType.startsWith("audio/") ? <audio src={mediaUrl(file)} controls className="w-full" /> : null}
+            {file.mimeType === "application/pdf" ? <a className="text-clay dark:text-amber-300" href={mediaUrl(file)} target="_blank">Open PDF</a> : null}
+            <code className="mt-3 block rounded bg-zinc-100 p-2 text-xs dark:bg-zinc-950">![{file.originalName}]({mediaUrl(file)})</code>
           </article>
         ))}
       </div>
