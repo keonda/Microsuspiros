@@ -7,6 +7,8 @@ import { apiError, handleApiError } from "@/lib/http";
 import { allowedMimeTypes, maxUploadBytes, publicUploadUrl, uploadRoot } from "@/lib/uploads";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const user = await requireUser();

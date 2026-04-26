@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/auth";
 import { handleApiError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({
   userId: z.string(),
   role: z.enum(["user", "admin"]).optional(),

@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { handleApiError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({
   title: z.string().min(1).max(120),
   parentId: z.string().nullable().optional(),

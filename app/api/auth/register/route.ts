@@ -4,6 +4,8 @@ import { createSession, hashPassword } from "@/lib/auth";
 import { handleApiError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(80).optional(),

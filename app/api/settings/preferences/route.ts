@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { handleApiError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({
   theme: z.enum(["light", "dark", "system"]).optional(),
   focusMode: z.boolean().optional(),

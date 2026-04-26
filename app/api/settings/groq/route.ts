@@ -6,6 +6,8 @@ import { runGroqChat } from "@/lib/groq";
 import { apiError, handleApiError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const saveSchema = z.object({
   apiKey: z.string().min(12).optional(),
   model: z.string().min(1).max(80).optional()

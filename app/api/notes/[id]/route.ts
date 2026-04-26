@@ -5,6 +5,8 @@ import { apiError, handleApiError } from "@/lib/http";
 import { extractWikiTitles } from "@/lib/notes";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const updateSchema = z.object({
   title: z.string().min(1).max(180).optional(),
   content: z.string().optional(),
