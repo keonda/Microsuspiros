@@ -31,7 +31,30 @@ const mapDeltas: Record<string, { x: number; y: number }> = {
   down: { x: -1, y: 1 }
 };
 
-const helpText = "Commands: look, north/south/east/west/up/down, inventory, take [item], drop [item], examine [thing], talk to [npc], attack [monster], use [item], rest.";
+const helpText = "Commands: look, search, north/south/east/west/up/down, inventory, take [item], drop [item], examine [thing], talk to [npc], attack [monster], use [item], rest.";
+
+type AdventureChoice = {
+  label: string;
+  command: string;
+  tone: "story" | "travel" | "danger" | "rest";
+};
+
+type InventoryEntry = {
+  quantity: number;
+  item: { id?: string; name: string; description?: string };
+};
+
+type AdventureRoom = {
+  slug: string;
+  name: string;
+  biome: string;
+  mood: string;
+  dangerLevel: number;
+  exitsFrom: Array<{ direction: string }>;
+  items: Array<{ item: { name: string } }>;
+  monsters: Array<{ monster: { name: string } }>;
+  npcs: Array<{ npc: { name: string } }>;
+};
 
 function buildMiniMap(
   rooms: Array<{ id: string; name: string; exitsFrom: Array<{ direction: string; toRoomId: string }> }>,
@@ -64,12 +87,79 @@ function buildMiniMap(
   return { rooms: Array.from(positions.values()), radius: 3 };
 }
 
-function combinedInventoryText(inventory: Array<{ quantity: number; item: { name: string } }>) {
+function combinedInventoryText(inventory: InventoryEntry[]) {
   const grouped = new Map<string, number>();
   for (const entry of inventory) {
     grouped.set(entry.item.name, (grouped.get(entry.item.name) ?? 0) + entry.quantity);
   }
   return Array.from(grouped.entries()).map(([name, quantity]) => `${name} x${quantity}`);
+}
+
+function hasInventory(inventory: InventoryEntry[], name: string) {
+  const needle = name.toLowerCase();
+  return inventory.some((entry) => entry.item.name.toLowerCase().includes(needle));
+}
+
+function knownDirections(room: { exitsFrom: Array<{ direction: string }> }) {
+  return new Set(room.exitsFrom.map((exit) => exit.direction));
+}
+
+async function getAdventureThread(input: {
+  characterId: string;
+  room: AdventureRoom;
+  inventory: InventoryEntry[];
+}) {
+  const { characterId, room, inventory } = input;
+  const coin = hasInventory(inventory, "copper memory coin");
+  const gateAnswered = await prisma.loreEntry.findFirst({
+    where: { relatedEntityType: "PlayerCharacter", relatedEntityId: characterId, title: "The Candle Gate Answers" }
+  });
+  const exits = knownDirections(room);
+  const unknownDirections = (Object.keys(reverseDirection) as Direction[]).filter((direction) => !exits.has(direction));
+
+  let objective = gateAnswered
+    ? "Follow the gate's new whisper and map what lies beyond the old roads."
+    : coin
+      ? "Return to the Candle Gate and use the Copper Memory Coin."
+      : "Find the Copper Memory Coin rumored to rest below the Quiet Well.";
+
+  const choices: AdventureChoice[] = [];
+
+  if (room.slug === "the-candle-gate") {
+    objective = gateAnswered ? objective : coin ? "Use the Copper Memory Coin at the Candle Gate." : "Ask Mara what the gate remembers, then seek the old shrine below the well.";
+    choices.push({ label: "Speak with Mara about the gate", command: "talk to Mara", tone: "story" });
+    if (coin && !gateAnswered) choices.push({ label: "Press the Copper Memory Coin to the gate", command: "use Copper Memory Coin", tone: "story" });
+    choices.push({ label: "Take the Ashroot Path", command: "north", tone: "travel" });
+  } else if (room.slug === "ashroot-path") {
+    choices.push({ label: "Follow the stone path toward the well", command: "east", tone: "travel" });
+    choices.push({ label: "Search the ash roots for signs", command: "search", tone: "story" });
+    if (room.monsters.length) choices.push({ label: `Face ${room.monsters[0].monster.name}`, command: `attack ${room.monsters[0].monster.name}`, tone: "danger" });
+  } else if (room.slug === "the-quiet-well") {
+    choices.push({ label: "Descend toward the copper ticking", command: "down", tone: "travel" });
+    choices.push({ label: "Listen into the silent well", command: "search", tone: "story" });
+    choices.push({ label: "Return to Ashroot Path", command: "west", tone: "travel" });
+  } else if (room.slug === "old-copper-shrine") {
+    if (!coin) choices.push({ label: "Take the Copper Memory Coin", command: "take Copper Memory Coin", tone: "story" });
+    choices.push({ label: "Study the copper mechanisms", command: "search", tone: "story" });
+    choices.push({ label: "Climb back to the Quiet Well", command: "up", tone: "travel" });
+  }
+
+  for (const entry of room.items.slice(0, 2)) {
+    choices.push({ label: `Take ${entry.item.name}`, command: `take ${entry.item.name}`, tone: "story" });
+  }
+  for (const entry of room.npcs.slice(0, 1)) {
+    choices.push({ label: `Talk to ${entry.npc.name}`, command: `talk to ${entry.npc.name}`, tone: "story" });
+  }
+  for (const entry of room.monsters.slice(0, 1)) {
+    choices.push({ label: `Attack ${entry.monster.name}`, command: `attack ${entry.monster.name}`, tone: "danger" });
+  }
+  for (const direction of unknownDirections.slice(0, 2)) {
+    choices.push({ label: `Push into the unmapped ${direction}`, command: direction, tone: "travel" });
+  }
+  choices.push({ label: "Rest and gather yourself", command: "rest", tone: "rest" });
+
+  const deduped = Array.from(new Map(choices.map((choice) => [choice.command, choice])).values()).slice(0, 5);
+  return { objective, choices: deduped };
 }
 
 export async function getOrCreateCharacter(userId: string) {
@@ -122,7 +212,9 @@ export async function getGameState(userId: string) {
       })
     : [];
 
-  return { character, room, inventory, minimap: buildMiniMap(mapRooms, character.currentRoomId) };
+  const adventure = room ? await getAdventureThread({ characterId: character.id, room, inventory }) : null;
+
+  return { character, room, inventory, minimap: buildMiniMap(mapRooms, character.currentRoomId), adventure };
 }
 
 function findByName<T extends { name: string }>(items: T[], target: string) {
@@ -268,6 +360,16 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
       return { lines: [helpText], tick: null };
     case "look":
       return { lines: [room.description], tick: await maybeTick(character.id, room.id) };
+    case "search": {
+      const clues = [
+        `You slow down and search ${room.name}.`,
+        room.events[0]?.description ?? `The strongest clue is the room itself: ${room.mood}, ${room.biome}, danger ${room.dangerLevel}.`
+      ];
+      if (room.slug === "the-quiet-well") clues.push("Far below, something copper ticks three times and waits.");
+      if (room.slug === "old-copper-shrine") clues.push("The shrine's plates are arranged like a question waiting for a coin-shaped answer.");
+      if (room.slug === "ashroot-path") clues.push("The roots lean east, toward stone and silence.");
+      return { lines: clues, tick: await maybeTick(character.id, room.id) };
+    }
     case "inventory":
       const inventoryLines = combinedInventoryText(state.inventory);
       return {
@@ -336,7 +438,7 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
       const npc = findByName(room.npcs.map((entry) => entry.npc), parsed.target);
       const monster = findByName(room.monsters.map((entry) => entry.monster), parsed.target);
       const exit = room.exitsFrom.find((entry) => entry.direction === parsed.target);
-      const text = item?.description ?? npc?.description ?? monster?.description ?? exit?.description;
+      const text = item?.description ?? npc?.description ?? monster?.description ?? exit?.description ?? (room.name.toLowerCase().includes(parsed.target.toLowerCase()) ? room.description : null);
       return { lines: [text ?? `You find nothing special about ${parsed.target}.`], tick: null };
     }
     case "talk": {
@@ -366,6 +468,35 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
     case "use": {
       const inventoryItem = state.inventory.find((entry) => findByName([entry.item], parsed.target));
       if (!inventoryItem) return { lines: [`You are not carrying ${parsed.target}.`], tick: null };
+      if (room.slug === "the-candle-gate" && inventoryItem.item.name.toLowerCase().includes("copper memory coin")) {
+        const existing = await prisma.loreEntry.findFirst({
+          where: { relatedEntityType: "PlayerCharacter", relatedEntityId: character.id, title: "The Candle Gate Answers" }
+        });
+        if (!existing) {
+          await prisma.loreEntry.create({
+            data: {
+              title: "The Candle Gate Answers",
+              body: "The Copper Memory Coin warmed against the Candle Gate. Somewhere beyond the mapped roads, a bell answered from under the earth.",
+              category: "quest",
+              relatedEntityType: "PlayerCharacter",
+              relatedEntityId: character.id
+            }
+          });
+          await prisma.playerCharacter.update({
+            where: { id: character.id },
+            data: { level: { increment: 1 }, maxHp: { increment: 4 }, hp: { increment: 4 } }
+          });
+          return {
+            lines: [
+              "You press the Copper Memory Coin against the Candle Gate.",
+              "The gate inhales. Every candle bends inward. A low bell answers from somewhere no map admits.",
+              "Milestone reached: The Candle Gate remembers you. You feel sturdier."
+            ],
+            tick: "world breathes..."
+          };
+        }
+        return { lines: ["The Candle Gate is already awake to the coin. Its candles lean toward unmapped roads."], tick: null };
+      }
       return { lines: [`You use ${inventoryItem.item.name}. ${inventoryItem.item.description}`], tick: await maybeTick(character.id, room.id) };
     }
     case "rest": {

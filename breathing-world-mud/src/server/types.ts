@@ -20,5 +20,5 @@ export type ParsedCommand =
   | { action: "use"; target: string }
   | { action: "rest" }
   | { action: "help" }
+  | { action: "search" }
   | { action: "unknown"; raw: string };
-

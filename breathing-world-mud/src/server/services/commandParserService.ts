@@ -24,6 +24,7 @@ export function parseCommand(input: string): ParsedCommand {
   if (normalized === "inventory" || normalized === "inv" || normalized === "i") return { action: "inventory" };
   if (normalized === "rest" || normalized === "sleep") return { action: "rest" };
   if (normalized === "help" || normalized === "?") return { action: "help" };
+  if (normalized === "search" || normalized === "investigate" || normalized === "listen") return { action: "search" };
 
   const goMatch = normalized.match(/^(go|walk|move|travel|head)\s+(north|south|east|west|up|down|n|s|e|w|u|d)$/);
   if (goMatch) return { action: "go", direction: directions[goMatch[2]] };
@@ -44,4 +45,3 @@ export function parseCommand(input: string): ParsedCommand {
 
   return { action: "unknown", raw };
 }
-

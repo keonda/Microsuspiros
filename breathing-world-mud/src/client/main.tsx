@@ -24,6 +24,10 @@ type GameState = {
     radius: number;
     rooms: Array<{ id: string; name: string; x: number; y: number; isCurrent: boolean }>;
   };
+  adventure: {
+    objective: string;
+    choices: Array<{ label: string; command: string; tone: "story" | "travel" | "danger" | "rest" }>;
+  } | null;
 };
 type Entity = { id: string; name: string; description: string };
 type LogLine = { id: number; text: string; kind?: "system" | "tick" | "command" };
@@ -115,6 +119,7 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
       <h2 className="section-title mt-5">Location</h2>
       <p className="font-mono text-amber-200">{room.name}</p>
       <p className="text-xs text-stone-400">{room.biome} / {room.mood} / danger {room.dangerLevel}</p>
+      <AdventurePanel adventure={state.adventure} send={send} />
       <MiniMap minimap={state.minimap} />
       <h2 className="section-title mt-5">Directions</h2>
       <div className="flex flex-wrap gap-2">
@@ -141,6 +146,23 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
         ...room.npcs.map((entry) => ({ id: entry.id, label: entry.npc.name, command: `talk to ${entry.npc.name}` }))
       ]} send={send} empty="Nothing obvious" />
     </aside>
+  );
+}
+
+function AdventurePanel({ adventure, send }: { adventure: GameState["adventure"]; send: (command: string) => void }) {
+  if (!adventure) return null;
+  return (
+    <div className="mt-4 border border-amber-900/60 bg-stone-950 p-3">
+      <h2 className="section-title">Story Thread</h2>
+      <p className="text-sm leading-5 text-amber-100">{adventure.objective}</p>
+      <div className="mt-3 grid gap-2">
+        {adventure.choices.map((choice) => (
+          <button key={choice.command} className={`choice-button choice-${choice.tone}`} onClick={() => send(choice.command)}>
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
