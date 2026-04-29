@@ -207,7 +207,7 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
       if (!destinationId) {
         const settings = await getSettings();
         if (!settings.worldGenerationEnabled) {
-          return { lines: [`There is no path ${parsed.direction}.`], tick: await maybeTick(character.id, room.id) };
+          return { lines: [`There is no path ${parsed.direction}. World generation is disabled in admin settings.`], tick: await maybeTick(character.id, room.id) };
         }
         const created = await createModestRoom(room.id, parsed.direction);
         destinationId = created.id;

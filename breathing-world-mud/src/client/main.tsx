@@ -23,6 +23,7 @@ type GameState = {
 };
 type Entity = { id: string; name: string; description: string };
 type LogLine = { id: number; text: string; kind?: "system" | "tick" | "command" };
+const compassDirections = ["north", "south", "east", "west", "up", "down"];
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -83,6 +84,7 @@ function AuthPanel({ onAuth }: { onAuth: (user: User) => void }) {
 function Sidebar({ state, send }: { state: GameState | null; send: (command: string) => void }) {
   if (!state?.room) return <aside className="panel">No character yet.</aside>;
   const { character, room, inventory } = state;
+  const knownExits = new Map(room.exitsFrom.map((exit) => [exit.direction, exit]));
   return (
     <aside className="panel w-full xl:h-full xl:w-80 xl:overflow-y-auto">
       <h2 className="section-title">{character.name}</h2>
@@ -95,13 +97,21 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
       <h2 className="section-title mt-5">Location</h2>
       <p className="font-mono text-amber-200">{room.name}</p>
       <p className="text-xs text-stone-400">{room.biome} / {room.mood} / danger {room.dangerLevel}</p>
-      <h2 className="section-title mt-5">Exits</h2>
+      <h2 className="section-title mt-5">Directions</h2>
       <div className="flex flex-wrap gap-2">
-        {room.exitsFrom.map((exit) => (
-          <button key={exit.direction} className="chip" onClick={() => send(exit.direction)} title={exit.description}>
-            {exit.direction}
-          </button>
-        ))}
+        {compassDirections.map((direction) => {
+          const exit = knownExits.get(direction);
+          return (
+            <button
+              key={direction}
+              className={exit ? "chip" : "chip-muted"}
+              onClick={() => send(direction)}
+              title={exit?.description ?? `Explore ${direction}`}
+            >
+              {exit ? direction : `${direction} ?`}
+            </button>
+          );
+        })}
       </div>
       <h2 className="section-title mt-5">Inventory</h2>
       <List items={inventory.map((entry) => ({ id: entry.id, label: `${entry.item.name} x${entry.quantity}`, command: `examine ${entry.item.name}` }))} send={send} empty="Empty" />

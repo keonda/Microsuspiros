@@ -37,6 +37,10 @@
     @apply border border-stone-600 bg-stone-900 px-2 py-1 text-sm text-amber-100 hover:border-amber-300;
   }
 
+  .chip-muted {
+    @apply border border-dashed border-stone-700 bg-stone-950 px-2 py-1 text-sm text-stone-400 hover:border-cyan-300 hover:text-cyan-200;
+  }
+
   .list-button {
     @apply text-left text-sm text-stone-300 hover:text-amber-200;
   }
