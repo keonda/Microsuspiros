@@ -96,7 +96,14 @@ Build and run the complete stack:
 docker compose up --build
 ```
 
-For Coolify, create a PostgreSQL resource and set these app environment variables:
+For Coolify, deploy this as its own app from the `breathing-world-mud` subdirectory:
+
+- Base directory: `breathing-world-mud`
+- Build pack: Dockerfile
+- Dockerfile location: `Dockerfile`
+- Exposed port: `3000`
+
+Then create or attach a PostgreSQL resource and set these app environment variables:
 
 ```env
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB?schema=public
@@ -104,6 +111,8 @@ SESSION_SECRET=replace-with-a-long-random-secret
 PORT=3000
 NODE_ENV=production
 ```
+
+If Coolify builds the repository root instead, it will build the separate Next.js app in this repo rather than Breathing World MUD.
 
 The container runs `prisma migrate deploy` before starting the server.
 

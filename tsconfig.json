@@ -37,6 +37,8 @@
   ],
   "exclude": [
     "node_modules",
-    "MicroSuspiros-Studio"
+    "MicroSuspiros-Studio",
+    "breathing-world-mud",
+    "micro-rhythm-youtube-extension"
   ]
 }
