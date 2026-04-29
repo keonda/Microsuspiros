@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String            @id @default(cuid())
+  email          String            @unique
+  passwordHash   String
+  displayName    String
+  isAdmin        Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  characters     PlayerCharacter[]
+}
+
+model PlayerCharacter {
+  id            String          @id @default(cuid())
+  userId        String
+  name          String
+  level         Int             @default(1)
+  hp            Int             @default(20)
+  maxHp         Int             @default(20)
+  attack        Int             @default(4)
+  defense       Int             @default(1)
+  currentRoomId String?
+  commandCount  Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentRoom   Room?           @relation(fields: [currentRoomId], references: [id])
+  inventory     InventoryItem[]
+
+  @@index([userId])
+}
+
+model Room {
+  id               String            @id @default(cuid())
+  name             String
+  slug             String            @unique
+  description      String
+  biome            String
+  mood             String
+  dangerLevel      Int               @default(1)
+  isGenerated      Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  characters       PlayerCharacter[]
+  exitsFrom        RoomExit[]        @relation("ExitFrom")
+  exitsTo          RoomExit[]        @relation("ExitTo")
+  monsters         RoomMonster[]
+  items            RoomItem[]
+  npcs             RoomNpc[]
+  events           WorldEvent[]
+}
+
+model RoomExit {
+  id          String  @id @default(cuid())
+  fromRoomId  String
+  toRoomId    String
+  direction   String
+  isLocked    Boolean @default(false)
+  description String
+  fromRoom    Room    @relation("ExitFrom", fields: [fromRoomId], references: [id], onDelete: Cascade)
+  toRoom      Room    @relation("ExitTo", fields: [toRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([fromRoomId, direction])
+  @@index([toRoomId])
+}
+
+model Monster {
+  id            String        @id @default(cuid())
+  name          String
+  description   String
+  species       String
+  level         Int           @default(1)
+  hp            Int           @default(8)
+  attack        Int           @default(3)
+  defense       Int           @default(0)
+  dangerRating  Int           @default(1)
+  lootTableJson Json
+  isGenerated   Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  rooms         RoomMonster[]
+}
+
+model Item {
+  id          String          @id @default(cuid())
+  name        String
+  description String
+  type        String
+  rarity      String          @default("common")
+  effectJson  Json
+  value       Int             @default(0)
+  isGenerated Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  inventories InventoryItem[]
+  rooms       RoomItem[]
+}
+
+model Npc {
+  id          String    @id @default(cuid())
+  name        String
+  description String
+  personality String
+  role        String
+  memoryJson  Json
+  isGenerated Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  rooms       RoomNpc[]
+}
+
+model WorldEvent {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  eventType    String
+  roomId       String?
+  metadataJson Json
+  createdAt    DateTime @default(now())
+  room         Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  @@index([roomId])
+}
+
+model InventoryItem {
+  id          String          @id @default(cuid())
+  characterId String
+  itemId      String
+  quantity    Int             @default(1)
+  character   PlayerCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  item        Item            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, itemId])
+}
+
+model RoomMonster {
+  id        String  @id @default(cuid())
+  roomId    String
+  monsterId String
+  currentHp Int
+  status    String  @default("alive")
+  room      Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  monster   Monster @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}
+
+model RoomItem {
+  id       String @id @default(cuid())
+  roomId   String
+  itemId   String
+  quantity Int    @default(1)
+  room     Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  item     Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, itemId])
+}
+
+model RoomNpc {
+  id     String @id @default(cuid())
+  roomId String
+  npcId  String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  npc    Npc    @relation(fields: [npcId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, npcId])
+}
+
+model LoreEntry {
+  id                String   @id @default(cuid())
+  title             String
+  body              String
+  category          String
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime @default(now())
+}
+
+model AiGenerationLog {
+  id                String   @id @default(cuid())
+  type              String
+  prompt            String
+  response          String
+  createdEntityType String?
+  createdEntityId   String?
+  createdAt         DateTime @default(now())
+}
+
+model AppSetting {
+  id                    String   @id @default("global")
+  groqApiKeyEncrypted   String?
+  groqModelName         String   @default("llama-3.1-8b-instant")
+  aiCreativity          Float    @default(0.7)
+  maxTokens             Int      @default(500)
+  worldGenerationEnabled Boolean @default(true)
+  safetyEnabled         Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+}

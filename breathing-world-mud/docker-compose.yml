@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mud
+      POSTGRES_PASSWORD: mud
+      POSTGRES_DB: breathing_world_mud
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://mud:mud@postgres:5432/breathing_world_mud?schema=public
+      SESSION_SECRET: change-me-to-a-long-random-secret
+      PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:
