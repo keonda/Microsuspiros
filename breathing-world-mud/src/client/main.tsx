@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Moon, Sun, Send, Shield, LogOut, Sparkles } from "lucide-react";
+import { Moon, Sun, Send, Shield, LogOut, Sparkles, UserCircle } from "lucide-react";
 import "./styles.css";
 
 type User = { id: string; email: string; displayName: string; isAdmin: boolean };
@@ -94,7 +94,7 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
       </div>
       <h2 className="section-title mt-5">Location</h2>
       <p className="font-mono text-amber-200">{room.name}</p>
-      <p className="text-xs text-stone-400">{room.biome} · {room.mood} · danger {room.dangerLevel}</p>
+      <p className="text-xs text-stone-400">{room.biome} / {room.mood} / danger {room.dangerLevel}</p>
       <h2 className="section-title mt-5">Exits</h2>
       <div className="flex flex-wrap gap-2">
         {room.exitsFrom.map((exit) => (
@@ -124,13 +124,77 @@ function List({ items, send, empty }: { items: Array<{ id: string; label: string
   return <div className="grid gap-1">{items.map((item) => <button key={item.id} className="list-button" onClick={() => send(item.command)}>{item.label}</button>)}</div>;
 }
 
-function Game({ user, onLogout }: { user: User; onLogout: () => void }) {
+function AccountPanel({ user, onUserChange }: { user: User; onUserChange: (user: User) => void }) {
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function saveProfile(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      const data = await api<{ user: User }>("/api/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({ displayName })
+      });
+      onUserChange(data.user);
+      setMessage("Profile updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update profile");
+    }
+  }
+
+  async function changePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      const data = await api<{ user: User }>("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      onUserChange(data.user);
+      setCurrentPassword("");
+      setNewPassword("");
+      setMessage("Password changed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change password");
+    }
+  }
+
+  return (
+    <section className="border-b border-stone-800 bg-stone-900 p-4">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <form onSubmit={saveProfile} className="grid gap-2">
+          <h2 className="section-title">Account</h2>
+          <p className="text-sm text-stone-400">{user.email}</p>
+          <input className="field" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="display name" />
+          <button className="send-button">Save Profile</button>
+        </form>
+        <form onSubmit={changePassword} className="grid gap-2">
+          <h2 className="section-title">Password</h2>
+          <input className="field" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="current password" />
+          <input className="field" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="new password" />
+          <button className="send-button">Change Password</button>
+        </form>
+      </div>
+      {message && <p className="mt-3 text-sm text-emerald-300">{message}</p>}
+      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+    </section>
+  );
+}
+
+function Game({ user, onUserChange, onLogout }: { user: User; onUserChange: (user: User) => void; onLogout: () => void }) {
   const [state, setState] = useState<GameState | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
   const [command, setCommand] = useState("");
   const [busy, setBusy] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [adminOpen, setAdminOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -181,11 +245,13 @@ function Game({ user, onLogout }: { user: User; onLogout: () => void }) {
             <p className="text-xs text-stone-500">Logged in as {user.displayName}</p>
           </div>
           <div className="flex gap-2">
-            {user.isAdmin && <button className="icon-button" onClick={() => setAdminOpen(!adminOpen)} title="Admin"><Shield size={18} /></button>}
+            <button className="icon-button" onClick={() => { setAccountOpen(!accountOpen); setAdminOpen(false); }} title="Account"><UserCircle size={18} /></button>
+            {user.isAdmin && <button className="icon-button" onClick={() => { setAdminOpen(!adminOpen); setAccountOpen(false); }} title="Admin"><Shield size={18} /></button>}
             <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title="Toggle theme">{theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}</button>
             <button className="icon-button" onClick={onLogout} title="Logout"><LogOut size={18} /></button>
           </div>
         </header>
+        {accountOpen ? <AccountPanel user={user} onUserChange={onUserChange} /> : null}
         {adminOpen ? <AdminPanel /> : null}
         <div className="grid gap-4 p-4 xl:grid-cols-[1fr_20rem]">
           <section className="panel flex min-h-[72vh] flex-col">
@@ -281,7 +347,7 @@ function App() {
     setUser(null);
   }
   if (!checked) return <main className="min-h-screen bg-stone-950 text-amber-200 grid place-items-center font-mono">Loading...</main>;
-  return user ? <Game user={user} onLogout={logout} /> : <AuthPanel onAuth={setUser} />;
+  return user ? <Game user={user} onUserChange={setUser} onLogout={logout} /> : <AuthPanel onAuth={setUser} />;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -15,6 +15,10 @@ const port = Number(process.env.PORT ?? 3000);
 const isProduction = process.env.NODE_ENV === "production";
 const PgSession = connectPgSimple(session);
 
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
 app.use(express.json({ limit: "1mb" }));
 app.use(
   cors({
@@ -34,10 +38,12 @@ app.use(
     secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: isProduction
+      secure: isProduction ? "auto" : false,
+      maxAge: 1000 * 60 * 60 * 24 * 30
     }
   })
 );
