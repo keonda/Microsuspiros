@@ -45,6 +45,22 @@
     @apply text-left text-sm text-stone-300 hover:text-amber-200;
   }
 
+  .mini-map {
+    @apply grid gap-1 border border-stone-800 bg-stone-950 p-2;
+  }
+
+  .map-cell {
+    @apply grid aspect-square min-h-5 place-items-center border border-stone-900 bg-stone-950 font-mono text-xs text-stone-700;
+  }
+
+  .map-cell-room {
+    @apply border-stone-700 bg-stone-900 text-stone-300;
+  }
+
+  .map-cell-current {
+    @apply border-amber-300 bg-amber-300 text-stone-950;
+  }
+
   .section-title {
     @apply mb-2 text-xs font-semibold uppercase tracking-widest text-stone-500;
   }

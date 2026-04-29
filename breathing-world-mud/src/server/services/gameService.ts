@@ -22,7 +22,55 @@ const reverseDirection: Record<Direction, Direction> = {
   down: "up"
 };
 
+const mapDeltas: Record<string, { x: number; y: number }> = {
+  north: { x: 0, y: -1 },
+  south: { x: 0, y: 1 },
+  east: { x: 1, y: 0 },
+  west: { x: -1, y: 0 },
+  up: { x: 1, y: -1 },
+  down: { x: -1, y: 1 }
+};
+
 const helpText = "Commands: look, north/south/east/west/up/down, inventory, take [item], drop [item], examine [thing], talk to [npc], attack [monster], use [item], rest.";
+
+function buildMiniMap(
+  rooms: Array<{ id: string; name: string; exitsFrom: Array<{ direction: string; toRoomId: string }> }>,
+  currentRoomId?: string | null
+) {
+  if (!currentRoomId) return { rooms: [], radius: 3 };
+  const byId = new Map(rooms.map((room) => [room.id, room]));
+  const positions = new Map<string, { id: string; name: string; x: number; y: number; isCurrent: boolean }>();
+  const queue = [{ id: currentRoomId, x: 0, y: 0 }];
+  const visited = new Set<string>();
+
+  while (queue.length) {
+    const next = queue.shift()!;
+    if (visited.has(next.id)) continue;
+    visited.add(next.id);
+    const room = byId.get(next.id);
+    if (!room) continue;
+    if (Math.abs(next.x) <= 3 && Math.abs(next.y) <= 3) {
+      positions.set(room.id, { id: room.id, name: room.name, x: next.x, y: next.y, isCurrent: room.id === currentRoomId });
+    }
+    for (const exit of room.exitsFrom) {
+      const delta = mapDeltas[exit.direction];
+      if (!delta || visited.has(exit.toRoomId)) continue;
+      const x = next.x + delta.x;
+      const y = next.y + delta.y;
+      if (Math.abs(x) <= 4 && Math.abs(y) <= 4) queue.push({ id: exit.toRoomId, x, y });
+    }
+  }
+
+  return { rooms: Array.from(positions.values()), radius: 3 };
+}
+
+function combinedInventoryText(inventory: Array<{ quantity: number; item: { name: string } }>) {
+  const grouped = new Map<string, number>();
+  for (const entry of inventory) {
+    grouped.set(entry.item.name, (grouped.get(entry.item.name) ?? 0) + entry.quantity);
+  }
+  return Array.from(grouped.entries()).map(([name, quantity]) => `${name} x${quantity}`);
+}
 
 export async function getOrCreateCharacter(userId: string) {
   const existing = await prisma.playerCharacter.findFirst({ where: { userId }, orderBy: { createdAt: "asc" } });
@@ -63,7 +111,18 @@ export async function getGameState(userId: string) {
     orderBy: { item: { name: "asc" } }
   });
 
-  return { character, room, inventory };
+  const mapRooms = character.currentRoomId
+    ? await prisma.room.findMany({
+        select: {
+          id: true,
+          name: true,
+          exitsFrom: { select: { direction: true, toRoomId: true } }
+        },
+        take: 500
+      })
+    : [];
+
+  return { character, room, inventory, minimap: buildMiniMap(mapRooms, character.currentRoomId) };
 }
 
 function findByName<T extends { name: string }>(items: T[], target: string) {
@@ -193,9 +252,10 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
     case "look":
       return { lines: [room.description], tick: await maybeTick(character.id, room.id) };
     case "inventory":
+      const inventoryLines = combinedInventoryText(state.inventory);
       return {
-        lines: state.inventory.length
-          ? [`You carry: ${state.inventory.map((entry) => `${entry.item.name} x${entry.quantity}`).join(", ")}.`]
+        lines: inventoryLines.length
+          ? [`You carry: ${inventoryLines.join(", ")}.`]
           : ["Your pack is empty."],
         tick: null
       };

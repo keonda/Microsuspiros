@@ -20,10 +20,27 @@ type GameState = {
     events: Array<{ id: string; title: string; description: string }>;
   } | null;
   inventory: Array<{ id: string; quantity: number; item: Entity }>;
+  minimap: {
+    radius: number;
+    rooms: Array<{ id: string; name: string; x: number; y: number; isCurrent: boolean }>;
+  };
 };
 type Entity = { id: string; name: string; description: string };
 type LogLine = { id: number; text: string; kind?: "system" | "tick" | "command" };
 const compassDirections = ["north", "south", "east", "west", "up", "down"];
+
+function combineInventory(inventory: GameState["inventory"]) {
+  const grouped = new Map<string, { id: string; name: string; quantity: number }>();
+  for (const entry of inventory) {
+    const existing = grouped.get(entry.item.name);
+    if (existing) {
+      existing.quantity += entry.quantity;
+    } else {
+      grouped.set(entry.item.name, { id: entry.item.id, name: entry.item.name, quantity: entry.quantity });
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -85,6 +102,7 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
   if (!state?.room) return <aside className="panel">No character yet.</aside>;
   const { character, room, inventory } = state;
   const knownExits = new Map(room.exitsFrom.map((exit) => [exit.direction, exit]));
+  const combinedInventory = combineInventory(inventory);
   return (
     <aside className="panel w-full xl:h-full xl:w-80 xl:overflow-y-auto">
       <h2 className="section-title">{character.name}</h2>
@@ -97,6 +115,7 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
       <h2 className="section-title mt-5">Location</h2>
       <p className="font-mono text-amber-200">{room.name}</p>
       <p className="text-xs text-stone-400">{room.biome} / {room.mood} / danger {room.dangerLevel}</p>
+      <MiniMap minimap={state.minimap} />
       <h2 className="section-title mt-5">Directions</h2>
       <div className="flex flex-wrap gap-2">
         {compassDirections.map((direction) => {
@@ -114,7 +133,7 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
         })}
       </div>
       <h2 className="section-title mt-5">Inventory</h2>
-      <List items={inventory.map((entry) => ({ id: entry.id, label: `${entry.item.name} x${entry.quantity}`, command: `examine ${entry.item.name}` }))} send={send} empty="Empty" />
+      <List items={combinedInventory.map((entry) => ({ id: entry.id, label: `${entry.name} x${entry.quantity}`, command: `examine ${entry.name}` }))} send={send} empty="Empty" />
       <h2 className="section-title mt-5">Here</h2>
       <List items={[
         ...room.items.map((entry) => ({ id: entry.id, label: `${entry.item.name} x${entry.quantity}`, command: `take ${entry.item.name}` })),
@@ -122,6 +141,33 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
         ...room.npcs.map((entry) => ({ id: entry.id, label: entry.npc.name, command: `talk to ${entry.npc.name}` }))
       ]} send={send} empty="Nothing obvious" />
     </aside>
+  );
+}
+
+function MiniMap({ minimap }: { minimap: GameState["minimap"] }) {
+  const radius = minimap?.radius ?? 3;
+  const byCoord = new Map((minimap?.rooms ?? []).map((room) => [`${room.x},${room.y}`, room]));
+  const cells: Array<{ key: string; room?: GameState["minimap"]["rooms"][number] }> = [];
+  for (let y = -radius; y <= radius; y += 1) {
+    for (let x = -radius; x <= radius; x += 1) {
+      cells.push({ key: `${x},${y}`, room: byCoord.get(`${x},${y}`) });
+    }
+  }
+  return (
+    <div className="mt-4">
+      <h2 className="section-title">Map</h2>
+      <div className="mini-map" style={{ gridTemplateColumns: `repeat(${radius * 2 + 1}, minmax(0, 1fr))` }}>
+        {cells.map((cell) => (
+          <div
+            key={cell.key}
+            className={cell.room?.isCurrent ? "map-cell map-cell-current" : cell.room ? "map-cell map-cell-room" : "map-cell"}
+            title={cell.room?.name ?? "Unmapped"}
+          >
+            {cell.room?.isCurrent ? "@" : cell.room ? "." : ""}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
