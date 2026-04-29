@@ -154,27 +154,36 @@ async function groqJson<T extends keyof SchemaMap>(type: T, prompt: string): Pro
   if (!apiKey) return fallback[type];
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: settings.groqModelName,
-        temperature: settings.aiCreativity,
-        max_tokens: settings.maxTokens,
-        messages: [
-          { role: "system", content: systemPrompt(settings.safetyEnabled) },
-          { role: "user", content: prompt }
-        ],
-        response_format: { type: "json_object" }
-      })
-    });
+    let body = "";
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: settings.groqModelName,
+          temperature: settings.aiCreativity,
+          max_tokens: settings.maxTokens,
+          messages: [
+            { role: "system", content: systemPrompt(settings.safetyEnabled) },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        })
+      });
 
-    const body = await response.text();
-    if (!response.ok) {
-      await prisma.aiGenerationLog.create({ data: { type, prompt, response: body } });
+      body = await response.text();
+      if (!response.ok) {
+        await prisma.aiGenerationLog.create({ data: { type, prompt, response: body } });
+        continue;
+      }
+    } catch (error) {
+      await prisma.aiGenerationLog.create({
+        data: { type, prompt, response: `Groq request failed: ${error instanceof Error ? error.message : "unknown error"}` }
+      });
       continue;
     }
 

@@ -71,6 +71,29 @@ function findByName<T extends { name: string }>(items: T[], target: string) {
   return items.find((item) => item.name.toLowerCase() === lowered) ?? items.find((item) => item.name.toLowerCase().includes(lowered));
 }
 
+function npcMemoryText(memoryJson: unknown) {
+  if (!memoryJson || typeof memoryJson !== "object") return "a road that was not there yesterday";
+  const memory = memoryJson as Record<string, unknown>;
+  const entries = Array.isArray(memory.memories) ? memory.memories : Array.isArray(memory.remembers) ? memory.remembers : [];
+  const first = entries.find((entry) => typeof entry === "string");
+  return first || "a road that was not there yesterday";
+}
+
+function localNpcDialogue(npc: { name: string; personality: string; role: string; memoryJson: unknown }, roomName: string) {
+  const memory = npcMemoryText(npc.memoryJson);
+  const role = npc.role.toLowerCase();
+  if (role.includes("tender") || role.includes("keeper")) {
+    return `"Keep your voice low," ${npc.name} says. "This place wakes when names are spoken. I still remember ${memory}."`;
+  }
+  if (role.includes("wander") || role.includes("pilgrim")) {
+    return `"I passed through ${roomName} before the dust settled," ${npc.name} murmurs. "Ask the walls about ${memory}."`;
+  }
+  if (npc.personality.toLowerCase().includes("wary")) {
+    return `${npc.name} studies you for a long moment. "I know only this: ${memory}. Do not spend it carelessly."`;
+  }
+  return `${npc.name} leans closer. "I remember ${memory}. That memory may matter before the next door opens."`;
+}
+
 async function maybeTick(characterId: string, roomId: string) {
   const character = await prisma.playerCharacter.update({
     where: { id: characterId },
@@ -239,10 +262,25 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
       const npc = findByName(room.npcs.map((entry) => entry.npc), parsed.target);
       if (!npc) return { lines: [`No one named ${parsed.target} answers.`], tick: null };
       const settings = await getSettings();
-      const line = settings.worldGenerationEnabled
-        ? await generateNarration("encounter", `NPC ${npc.name}, personality ${npc.personality}, role ${npc.role}, room ${room.name}`)
-        : `${npc.name} says, "Listen carefully. This place remembers footsteps."`;
-      return { lines: [`${npc.name}: ${line}`], tick: await maybeTick(character.id, room.id) };
+      const fallbackLine = localNpcDialogue(npc, room.name);
+      const aiLine = settings.worldGenerationEnabled
+        ? await generateNarration(
+            "encounter",
+            `Write one in-character NPC dialogue line. NPC: ${npc.name}. Description: ${npc.description}. Personality: ${npc.personality}. Role: ${npc.role}. Room: ${room.name}. Known memory: ${npcMemoryText(npc.memoryJson)}.`
+          )
+        : "";
+      await prisma.npc.update({
+        where: { id: npc.id },
+        data: {
+          memoryJson: {
+            ...((npc.memoryJson && typeof npc.memoryJson === "object" && !Array.isArray(npc.memoryJson) ? npc.memoryJson : {}) as Record<string, unknown>),
+            lastSpokenRoom: room.name,
+            lastSpokenAt: new Date().toISOString()
+          } as Prisma.InputJsonValue
+        }
+      });
+      const line = aiLine && aiLine !== "The moment lands with a short, sharp echo." ? aiLine : fallbackLine;
+      return { lines: [`${npc.name} turns toward you.`, line], tick: await maybeTick(character.id, room.id) };
     }
     case "use": {
       const inventoryItem = state.inventory.find((entry) => findByName([entry.item], parsed.target));
