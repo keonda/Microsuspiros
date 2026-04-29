@@ -192,7 +192,8 @@ async function createModestRoom(currentRoomId: string, direction: Direction) {
   const generated = await generateConnectedRoom({
     fromRoomName: current.name,
     fromRoomDescription: current.description,
-    direction
+    direction,
+    seed: current.id
   });
 
   const room = await prisma.room.create({
@@ -218,6 +219,22 @@ async function createModestRoom(currentRoomId: string, direction: Direction) {
       description: "The way back remains visible, though the air around it shivers."
     }
   });
+
+  const sideDirections = (Object.keys(reverseDirection) as Direction[]).filter(
+    (candidate) => candidate !== reverseDirection[direction]
+  );
+  const sideExitCount = Math.random() < 0.65 ? 1 : 2;
+  for (const sideDirection of sideDirections.sort(() => Math.random() - 0.5).slice(0, sideExitCount)) {
+    await prisma.worldEvent.create({
+      data: {
+        roomId: room.id,
+        title: `A possible way ${sideDirection}`,
+        description: `The air ${sideDirection} of here looks unsettled, as if a path could be pressed into it.`,
+        eventType: "frontier",
+        metadataJson: { direction: sideDirection } as Prisma.InputJsonValue
+      }
+    });
+  }
 
   const settings = await getSettings();
   if (settings.worldGenerationEnabled) {
@@ -276,7 +293,11 @@ async function resolveCommand(userId: string, parsed: ParsedCommand) {
       await prisma.playerCharacter.update({ where: { id: character.id }, data: { currentRoomId: destinationId } });
       const destination = await prisma.room.findUnique({ where: { id: destinationId } });
       return {
-        lines: [`You go ${parsed.direction}.`, destination?.description ?? "The path opens into darkness."],
+        lines: [
+          generated ? `You press ${parsed.direction} into unmapped dark.` : `You go ${parsed.direction}.`,
+          generated && destination ? `New room discovered: ${destination.name}.` : "",
+          destination?.description ?? "The path opens into darkness."
+        ].filter(Boolean),
         tick: generated ? "world breathes..." : await maybeTick(character.id, destinationId)
       };
     }

@@ -128,6 +128,59 @@ const fallback: SchemaMap = {
   }
 };
 
+const fallbackRooms = [
+  {
+    name: "Mosslit Culvert",
+    description: "A low culvert opens under old masonry, its wet stones shining with moss and pinprick reflections.",
+    biome: "underground riverwork",
+    mood: "cold and echoing",
+    dangerLevel: 1,
+    exitDescription: "A damp stone throat leads away from the known room."
+  },
+  {
+    name: "Bellroot Crossing",
+    description: "White roots loop across a broken crossing where tiny buried bells chime when no one moves.",
+    biome: "root-choked ruin",
+    mood: "hushed and expectant",
+    dangerLevel: 2,
+    exitDescription: "The roots part just enough to admit a careful traveler."
+  },
+  {
+    name: "Glass Moth Gallery",
+    description: "A narrow gallery glitters with sleeping glass-winged moths, each reflecting a different forgotten hall.",
+    biome: "abandoned tower",
+    mood: "fragile and watchful",
+    dangerLevel: 1,
+    exitDescription: "A passage lined with brittle wings joins the rooms."
+  },
+  {
+    name: "Copper Rain Court",
+    description: "Green copper gutters drip into an open court though no sky is visible above the leaning walls.",
+    biome: "forgotten machine court",
+    mood: "restless and metallic",
+    dangerLevel: 2,
+    exitDescription: "A corroded arch opens with a low mechanical sigh."
+  },
+  {
+    name: "Lantern-Soot Arcade",
+    description: "Blackened lantern hooks line a covered arcade, and every shadow points in a slightly different direction.",
+    biome: "candlelit town",
+    mood: "quietly suspicious",
+    dangerLevel: 1,
+    exitDescription: "The arcade bends back toward the last certain place."
+  }
+];
+
+const fallbackEpithets = [
+  "of Low Bells",
+  "under Pale Roots",
+  "beside the Still Water",
+  "of Copper Rain",
+  "below the Candle Smoke",
+  "with the Leaning Door",
+  "near the Sleeping Gear"
+];
+
 function systemPrompt(safetyEnabled: boolean) {
   return [
     "Return valid JSON only. No markdown, no prose outside JSON.",
@@ -226,14 +279,19 @@ export async function generateConnectedRoom(input: {
   fromRoomName: string;
   fromRoomDescription: string;
   direction: string;
+  seed?: string;
 }) {
   const data = await groqJson(
     "room",
     `Generate one new connected room as JSON with keys name, description, biome, mood, dangerLevel, exitDescription. Existing room: ${input.fromRoomName}. Description: ${input.fromRoomDescription}. Direction: ${input.direction}.`
   );
+  const hash = Math.abs([...`${input.fromRoomName}-${input.direction}-${input.seed ?? ""}`].reduce((sum, char) => sum + char.charCodeAt(0), 0));
+  const fallbackIndex = hash % fallbackRooms.length;
+  const epithet = fallbackEpithets[hash % fallbackEpithets.length];
+  const room = data.name === fallback.room.name ? { ...fallbackRooms[fallbackIndex], name: `${fallbackRooms[fallbackIndex].name} ${epithet}` } : data;
   return {
-    ...data,
-    slug: await uniqueSlug(data.name)
+    ...room,
+    slug: await uniqueSlug(room.name)
   };
 }
 
