@@ -84,7 +84,7 @@ function Sidebar({ state, send }: { state: GameState | null; send: (command: str
   if (!state?.room) return <aside className="panel">No character yet.</aside>;
   const { character, room, inventory } = state;
   return (
-    <aside className="panel w-full xl:w-80">
+    <aside className="panel w-full xl:h-full xl:w-80 xl:overflow-y-auto">
       <h2 className="section-title">{character.name}</h2>
       <div className="grid grid-cols-2 gap-2 text-sm">
         <Stat label="HP" value={`${character.hp}/${character.maxHp}`} />
@@ -238,8 +238,8 @@ function Game({ user, onUserChange, onLogout }: { user: User; onUserChange: (use
 
   return (
     <div className={theme}>
-      <main className="min-h-screen bg-stone-100 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
-        <header className="flex items-center justify-between border-b border-stone-300 bg-stone-200 px-4 py-3 dark:border-stone-800 dark:bg-stone-900">
+      <main className="flex min-h-screen flex-col bg-stone-100 text-stone-900 dark:bg-stone-950 dark:text-stone-100 xl:h-screen xl:overflow-hidden">
+        <header className="shrink-0 flex items-center justify-between border-b border-stone-300 bg-stone-200 px-4 py-3 dark:border-stone-800 dark:bg-stone-900">
           <div>
             <h1 className="font-mono text-lg text-amber-700 dark:text-amber-200">Breathing World MUD</h1>
             <p className="text-xs text-stone-500">Logged in as {user.displayName}</p>
@@ -253,9 +253,9 @@ function Game({ user, onUserChange, onLogout }: { user: User; onUserChange: (use
         </header>
         {accountOpen ? <AccountPanel user={user} onUserChange={onUserChange} /> : null}
         {adminOpen ? <AdminPanel /> : null}
-        <div className="grid gap-4 p-4 xl:grid-cols-[1fr_20rem]">
-          <section className="panel flex min-h-[72vh] flex-col">
-            <div ref={scrollRef} className="story-log flex-1 overflow-y-auto pr-2">
+        <div className="grid gap-4 p-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[1fr_20rem] xl:overflow-hidden">
+          <section className="panel flex min-h-[72vh] flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
+            <div ref={scrollRef} className="story-log min-h-0 flex-1 overflow-y-auto pr-2">
               {log.map((line) => <p key={line.id} className={line.kind === "command" ? "text-emerald-300" : line.kind === "tick" ? "text-cyan-300 italic" : ""}>{line.text}</p>)}
               {busy && <p className="flex items-center gap-2 text-cyan-300"><Sparkles size={14} /> world listens...</p>}
             </div>
