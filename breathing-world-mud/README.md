@@ -112,6 +112,8 @@ PORT=3000
 NODE_ENV=production
 ```
 
+Use a dedicated database for Breathing World MUD. Do not point `DATABASE_URL` at the existing Writer Studio database or any other app database. If seed fails with an error such as `column "isAdmin" does not exist`, Coolify is connected to a database that already has a different `"User"` table. Create a fresh PostgreSQL database/resource, update `DATABASE_URL`, redeploy, then run seed again.
+
 If Coolify builds the repository root instead, it will build the separate Next.js app in this repo rather than Breathing World MUD.
 
 The container runs `prisma migrate deploy` before starting the server.
