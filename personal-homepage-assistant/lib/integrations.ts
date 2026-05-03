@@ -4,6 +4,7 @@ import { decryptSecret, encryptSecret } from "@/lib/encryption";
 import { prisma } from "@/lib/prisma";
 
 const cacheMs = 1000 * 60 * 5;
+const requestTimeoutMs = 15000;
 const safeUrl = z.string().trim().url();
 const plexClientId = "personal-homepage-assistant";
 const plexHeaders = {
@@ -142,7 +143,7 @@ async function fetchOverview(integration: Awaited<ReturnType<typeof getIntegrati
       name: integration.name,
       enabled: integration.enabled,
       status: "error",
-      error: friendlyError(error),
+      error: `${friendlyError(error)} (${integration.baseUrl})`,
       lastUpdated: new Date().toISOString(),
       stats: {},
       sections: []
@@ -229,7 +230,7 @@ export async function createPlexPin() {
     method: "POST",
     headers: plexHeaders,
     cache: "no-store",
-    signal: AbortSignal.timeout(8000)
+    signal: AbortSignal.timeout(requestTimeoutMs)
   });
   if (!response.ok) throw new Error(`Plex PIN request failed with ${response.status}.`);
   const data = await response.json();
@@ -245,7 +246,7 @@ export async function checkPlexPin(pinId: number) {
   const response = await fetch(`https://plex.tv/api/v2/pins/${pinId}`, {
     headers: plexHeaders,
     cache: "no-store",
-    signal: AbortSignal.timeout(8000)
+    signal: AbortSignal.timeout(requestTimeoutMs)
   });
   if (!response.ok) throw new Error(`Plex PIN check failed with ${response.status}.`);
   const data = await response.json();
@@ -287,7 +288,7 @@ function getCredential(integration: NonNullable<Awaited<ReturnType<typeof getInt
 }
 
 async function plexFetch(baseUrl: string, path: string, token: string) {
-  const response = await fetch(`${baseUrl}${path}?X-Plex-Token=${encodeURIComponent(token)}`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+  const response = await fetch(`${baseUrl}${path}?X-Plex-Token=${encodeURIComponent(token)}`, { cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
   if (!response.ok) throw new Error(`Plex returned ${response.status}.`);
   return response.text();
 }
@@ -313,14 +314,38 @@ async function fetchPlexServerResource(token: string) {
   const response = await fetch("https://plex.tv/api/resources?includeHttps=1", {
     headers: { ...plexHeaders, "X-Plex-Token": token },
     cache: "no-store",
-    signal: AbortSignal.timeout(10000)
+    signal: AbortSignal.timeout(requestTimeoutMs)
   });
   if (!response.ok) throw new Error(`Unable to fetch Plex servers (${response.status}).`);
   const text = await response.text();
   const servers = parsePlexResources(text);
-  const server = servers.find((item) => item.owned && item.uri) ?? servers.find((item) => item.uri);
+  const server = await firstReachablePlexServer(servers, token);
   if (!server) throw new Error("Plex login worked, but no reachable Plex Media Server was found.");
   return server;
+}
+
+async function firstReachablePlexServer(servers: PlexServerResource[], token: string) {
+  const preferred = [
+    ...servers.filter((item) => item.owned && item.uri.includes("plex.direct")),
+    ...servers.filter((item) => item.owned && !item.uri.includes("plex.direct")),
+    ...servers.filter((item) => item.uri.includes("plex.direct")),
+    ...servers
+  ];
+  const seen = new Set<string>();
+  for (const server of preferred) {
+    if (!server.uri || seen.has(server.uri)) continue;
+    seen.add(server.uri);
+    try {
+      const response = await fetch(`${server.uri}/identity?X-Plex-Token=${encodeURIComponent(token)}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) return server;
+    } catch {
+      // Try the next advertised Plex connection.
+    }
+  }
+  return preferred[0] ?? null;
 }
 
 function parsePlexResources(text: string): PlexServerResource[] {
@@ -347,7 +372,7 @@ function parsePlexResources(text: string): PlexServerResource[] {
 }
 
 async function jsonFetch(url: string, headers: Record<string, string>) {
-  const response = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(8000) });
+  const response = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
   if (!response.ok) throw new Error(`Server returned ${response.status}.`);
   return response.json();
 }
@@ -474,6 +499,7 @@ function decodeXml(value: string) {
 function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : "Unable to reach the server.";
   if (message.includes("401") || message.includes("403")) return "Credentials were rejected. Check the token/API key.";
+  if (message.includes("timeout") || message.includes("aborted")) return "Timed out while contacting the server. Check whether this deployment can reach that Plex URL.";
   if (message.includes("fetch failed") || message.includes("ECONNREFUSED")) return "Server is offline or unreachable from this deployment.";
   return message;
 }
