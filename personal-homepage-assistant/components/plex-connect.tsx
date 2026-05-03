@@ -61,7 +61,7 @@ export function PlexConnect() {
       </div>
       {pin && (
         <div className="mt-4 rounded-xl bg-white/70 p-4 dark:bg-white/10">
-          <p className="label">Plex code</p>
+          <p className="label">4-character Plex code</p>
           <p className="mt-1 text-3xl font-bold tracking-widest">{pin.code}</p>
           <a className="mt-3 inline-flex text-sm font-semibold text-moss" href={pin.authUrl} target="_blank">Open Plex link page</a>
         </div>

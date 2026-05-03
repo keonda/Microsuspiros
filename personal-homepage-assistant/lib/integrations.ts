@@ -225,7 +225,7 @@ export async function testIntegration(kind: IntegrationKind) {
 }
 
 export async function createPlexPin() {
-  const response = await fetch("https://plex.tv/api/v2/pins?strong=true", {
+  const response = await fetch("https://plex.tv/api/v2/pins", {
     method: "POST",
     headers: plexHeaders,
     cache: "no-store",
