@@ -67,13 +67,13 @@ After login, go to `Settings -> AI`, paste your Groq API key, and save. The key 
 
 ## Coolify Deployment
 
-1. Create a new Coolify app from this repository or folder.
+1. Create a new Coolify app from this repository.
 2. Add a PostgreSQL resource in Coolify.
 3. Set environment variables:
    - `DATABASE_URL` from the Coolify Postgres resource
    - `SESSION_SECRET` as a long random string
-4. Use the included `Dockerfile`, or set build command `npm run build` and start command `npm run start`.
-5. On first deploy, the Dockerfile command runs `npx prisma migrate deploy` before starting Next.js.
+4. Use Nixpacks from the repository root. The root `package.json` and `nixpacks.toml` forward build/start commands into `personal-homepage-assistant`.
+5. The start command runs `prisma migrate deploy` before starting Next.js.
 6. Visit the app URL and complete first-run setup.
 7. Add the Groq key inside the app at `Settings -> AI`.
 

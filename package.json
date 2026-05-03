@@ -1,0 +1,15 @@
+{
+  "name": "microsuspiros-deploy-root",
+  "private": true,
+  "workspaces": [
+    "personal-homepage-assistant"
+  ],
+  "scripts": {
+    "build": "npm --workspace personal-homepage-assistant run build",
+    "start": "npm --workspace personal-homepage-assistant run prisma:deploy && npm --workspace personal-homepage-assistant run start",
+    "dev": "npm --workspace personal-homepage-assistant run dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
