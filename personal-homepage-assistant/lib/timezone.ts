@@ -30,6 +30,19 @@ export function zonedDateAtHour(timeZone: string, offsetDays: number, hour = 9) 
   return new Date(base.getTime() - offset * 60000);
 }
 
+export function zonedDateForMonthDay(timeZone: string, month: number, day: number, hour = 9) {
+  const now = new Date();
+  const currentYear = Number(new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(now));
+  const candidate = zonedDateForParts(timeZone, currentYear, month, day, hour);
+  return candidate.getTime() < now.getTime() ? zonedDateForParts(timeZone, currentYear + 1, month, day, hour) : candidate;
+}
+
+function zonedDateForParts(timeZone: string, year: number, month: number, day: number, hour: number) {
+  const base = new Date(Date.UTC(year, month - 1, day, hour, 0, 0));
+  const offset = getTimeZoneOffsetMinutes(base, timeZone);
+  return new Date(base.getTime() - offset * 60000);
+}
+
 function getTimeZoneOffsetMinutes(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,

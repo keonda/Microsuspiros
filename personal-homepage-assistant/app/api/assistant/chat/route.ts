@@ -170,8 +170,23 @@ async function parseAssistantAction({
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content ?? "{}";
   try {
-    return aiActionSchema.parse(JSON.parse(content));
+    return aiActionSchema.parse(normalizeParsedAction(JSON.parse(content)));
   } catch {
     return { intent: "none", fields: {}, missing: [] } as const;
   }
+}
+
+function normalizeParsedAction(raw: any) {
+  const fields = raw?.fields && typeof raw.fields === "object" ? { ...raw.fields } : {};
+  let action = raw?.action;
+  let itemType = raw?.itemType;
+
+  if (action === "create_event") action = "create_calendar_event";
+  if (itemType === "event") itemType = "calendar_event";
+  if (fields.itemType === "event") fields.itemType = "calendar_event";
+  if (fields.date && !fields.startsAt) fields.startsAt = fields.date;
+  if (fields.name && !raw.title) raw.title = fields.name;
+  if (fields.title && !raw.title) raw.title = fields.title;
+
+  return { ...raw, action, itemType, fields };
 }

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { defaultTimeZone, zonedDateAtHour } from "@/lib/timezone";
+import { defaultTimeZone, zonedDateAtHour, zonedDateForMonthDay } from "@/lib/timezone";
 
 export const actionNames = [
   "create_site",
@@ -243,16 +243,17 @@ export function parseLocalAssistantAction(message: string, timeZone = defaultTim
     });
   }
 
-  if (/^(add|create)\s+(a\s+)?(calendar\s+)?event\b/i.test(text)) {
-    const title = cleanupTitle(text.replace(/^(add|create)\s+(a\s+)?(calendar\s+)?event\s*(for|called|named)?\s*/i, ""));
+  if (/^(add|create)\s+(to\s+)?(a\s+)?(calendar\s+)?event\b/i.test(text)) {
+    const startsAt = dueDate ?? inferMonthDayDate(text, timeZone);
+    const title = cleanupTitle(stripDateFromTitle(text.replace(/^(add|create)\s+(to\s+)?(a\s+)?(calendar\s+)?event\s*(for|called|named)?\s*,?\s*/i, "")));
     if (!title) return followUp("What should the event be called?", ["title"]);
-    if (!dueDate) return followUp("When should I schedule it?", ["startsAt"]);
+    if (!startsAt) return followUp("When should I schedule it?", ["startsAt"]);
     return aiActionSchema.parse({
       intent: "action",
       action: "create_calendar_event",
       itemType: "calendar_event",
       title,
-      fields: { title, startsAt: dueDate, type: eventTypeFromText(lower), description: title },
+      fields: { title, startsAt, type: eventTypeFromText(lower), description: title },
       missing: []
     });
   }
@@ -389,6 +390,24 @@ function inferDueDate(value: string, timeZone: string) {
     return zonedDateAtHour(timeZone, (6 - jsDay + 7) % 7 || 7).toISOString();
   } else if (lower.includes("next week")) return zonedDateAtHour(timeZone, 7).toISOString();
   else return null;
+}
+
+function inferMonthDayDate(value: string, timeZone: string) {
+  const match = value.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})\b/i);
+  if (!match) return null;
+  const month = monthNumber(match[1]);
+  const day = Number(match[2]);
+  if (!month || day < 1 || day > 31) return null;
+  return zonedDateForMonthDay(timeZone, month, day).toISOString();
+}
+
+function stripDateFromTitle(value: string) {
+  return value.replace(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b,?\s*/i, "");
+}
+
+function monthNumber(value: string) {
+  const month = value.slice(0, 3).toLowerCase();
+  return ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(month) + 1;
 }
 
 function eventTypeFromText(value: string) {
