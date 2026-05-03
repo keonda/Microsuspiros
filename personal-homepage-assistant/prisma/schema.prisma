@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SiteStatus {
+  active
+  idea
+  paused
+  archived
+}
+
+enum ProjectStatus {
+  active
+  idea
+  paused
+  archived
+  complete
+}
+
+enum TaskStatus {
+  todo
+  doing
+  done
+}
+
+enum Priority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum CalendarEventType {
+  reminder
+  content_idea
+  upload
+  meeting
+  personal
+}
+
+enum ChatRole {
+  user
+  assistant
+  system
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  isAdmin      Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  secret    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String?
+  createdAt DateTime @default(now())
+  notes     Note[]
+  projects  Project[]
+}
+
+model Site {
+  id          String     @id @default(cuid())
+  name        String
+  url         String
+  description String?
+  category    String?
+  status      SiteStatus @default(active)
+  icon        String?
+  color       String?
+  pinned      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model YouTubeChannel {
+  id           String   @id @default(cuid())
+  name         String
+  url          String
+  description  String?
+  nicheMood    String?
+  notes        String?
+  studioUrl    String?
+  analyticsUrl String?
+  pinned       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(active)
+  priority    Priority      @default(medium)
+  relatedLinks String?
+  notes       String?
+  pinned      Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  notesList   Note[]
+  tasks       Task[]
+  events      CalendarEvent[]
+  tags        Tag[]
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  projectId String?
+  siteId    String?
+  channelId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  tags      Tag[]
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(todo)
+  priority    Priority   @default(medium)
+  dueDate     DateTime?
+  pinned      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model CalendarEvent {
+  id          String            @id @default(cuid())
+  title       String
+  startsAt    DateTime
+  endsAt      DateTime?
+  description String?
+  type        CalendarEventType @default(reminder)
+  pinned      Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  projectId   String?
+  project     Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model QuickLink {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  category  String?
+  favorite  Boolean  @default(false)
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChatConversation {
+  id                String        @id @default(cuid())
+  title             String
+  useDashboardContext Boolean     @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  messages          ChatMessage[]
+}
+
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  role           ChatRole
+  content        String
+  createdAt      DateTime         @default(now())
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  itemType  String
+  itemName  String
+  action    String
+  createdAt DateTime @default(now())
+}
