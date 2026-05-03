@@ -169,6 +169,7 @@ async function arrOverview(kind: "sonarr" | "radarr", name: string, baseUrl: str
   const missingRecords = Array.isArray(missing?.records) ? missing.records : [];
   const queueRecords = Array.isArray(queue?.records) ? queue.records : [];
   const upcoming = Array.isArray(calendar) ? calendar : [];
+  const collectionLookup = buildCollectionLookup(kind, collection);
   return {
     kind,
     name,
@@ -182,9 +183,9 @@ async function arrOverview(kind: "sonarr" | "radarr", name: string, baseUrl: str
       queue: Number(queue?.totalRecords ?? queueRecords.length)
     },
     sections: [
-      { title: kind === "sonarr" ? "Wanted episodes" : "Wanted movies", items: missingRecords.slice(0, 8).map((item: any) => arrTitle(kind, item)) },
-      { title: "Upcoming", items: upcoming.slice(0, 8).map((item: any) => arrTitle(kind, item)) },
-      { title: "Download queue", items: queueRecords.slice(0, 8).map((item: any) => item.title ?? arrTitle(kind, item)) }
+      { title: kind === "sonarr" ? "Wanted episodes" : "Wanted movies", items: missingRecords.slice(0, 8).map((item: any) => arrTitle(kind, item, collectionLookup)) },
+      { title: "Upcoming", items: upcoming.slice(0, 8).map((item: any) => arrTitle(kind, item, collectionLookup)) },
+      { title: "Download queue", items: queueRecords.slice(0, 8).map((item: any) => arrTitle(kind, item, collectionLookup, item.title)) }
     ]
   };
 }
@@ -228,9 +229,33 @@ function disabledSummary(kind: IntegrationKind, error: string, name = labelFor(k
   return { kind, name, enabled: false, status: "disabled", error, stats: {}, sections: [], lastUpdated: new Date().toISOString() };
 }
 
-function arrTitle(kind: "sonarr" | "radarr", item: any) {
-  if (kind === "sonarr") return item.series?.title && item.title ? `${item.series.title} - ${item.title}` : item.title ?? item.series?.title ?? "Untitled";
-  return item.movie?.title ?? item.title ?? "Untitled";
+function buildCollectionLookup(kind: "sonarr" | "radarr", collection: any) {
+  const records = Array.isArray(collection) ? collection : [];
+  return new Map(records.map((item: any) => [item.id, kind === "sonarr" ? item.title : movieTitle(item)]));
+}
+
+function arrTitle(kind: "sonarr" | "radarr", item: any, lookup: Map<any, string>, queueTitle?: string) {
+  if (kind === "sonarr") {
+    const seriesTitle = item.series?.title ?? lookup.get(item.seriesId) ?? item.seriesTitle ?? queueTitle;
+    const episodeTitle = item.title ?? item.episodeTitle;
+    const episodeNumber = formatEpisodeNumber(item);
+    return [seriesTitle, episodeNumber, episodeTitle].filter(Boolean).join(" - ") || "Untitled episode";
+  }
+  return movieTitle(item.movie) ?? lookup.get(item.movieId) ?? movieTitle(item) ?? queueTitle ?? "Untitled movie";
+}
+
+function formatEpisodeNumber(item: any) {
+  const season = item.seasonNumber ?? item.episode?.seasonNumber;
+  const episode = item.episodeNumber ?? item.episode?.episodeNumber;
+  if (season === undefined || episode === undefined) return null;
+  return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+}
+
+function movieTitle(item: any) {
+  if (!item) return null;
+  const title = item.title ?? item.movie?.title;
+  const year = item.year ?? item.movie?.year;
+  return title && year ? `${title} (${year})` : title ?? null;
 }
 
 function credentialKey(kind: IntegrationKind) {
