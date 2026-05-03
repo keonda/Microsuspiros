@@ -84,13 +84,13 @@ export function AssistantChat({ conversations }: { conversations: Conversation[]
   }
 
   return (
-    <div className="grid min-h-[72vh] gap-4 lg:grid-cols-[280px_1fr]">
-      <aside className="card p-3">
+    <div className="grid h-[calc(100vh-11rem)] min-h-[620px] gap-4 overflow-hidden lg:grid-cols-[280px_1fr]">
+      <aside className="card flex min-h-0 flex-col p-3">
         <button className="btn btn-primary mb-3 w-full" onClick={startNew}>
           <Plus size={16} />
           New chat
         </button>
-        <div className="space-y-1">
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
           {items.map((item) => (
             <div key={item.id} className={`group flex items-center gap-1 rounded-xl ${item.id === currentId ? "bg-ink text-white dark:bg-white dark:text-ink" : "hover:bg-ink/5 dark:hover:bg-white/10"}`}>
               <button className="min-w-0 flex-1 px-3 py-2 text-left text-sm font-semibold" onClick={() => {
@@ -106,18 +106,18 @@ export function AssistantChat({ conversations }: { conversations: Conversation[]
           ))}
         </div>
       </aside>
-      <section className="card flex min-h-[72vh] flex-col p-0">
-        <div className="flex items-center justify-between border-b border-ink/10 p-4 dark:border-white/10">
-          <div className="flex items-center gap-2 font-bold">
+      <section className="card flex min-h-0 flex-col overflow-hidden p-0">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-ink/10 p-4 dark:border-white/10">
+          <div className="flex min-w-0 items-center gap-2 font-bold">
             <Bot size={18} />
-            {current?.title ?? "Fresh conversation"}
+            <span className="truncate">{current?.title ?? "Fresh conversation"}</span>
           </div>
-          <label className="flex items-center gap-2 text-sm font-semibold">
+          <label className="flex shrink-0 items-center gap-2 text-sm font-semibold">
             <input className="accent-moss" type="checkbox" checked={useContext} onChange={(e) => setUseContext(e.target.checked)} />
             Use dashboard context
           </label>
         </div>
-        <div className="flex-1 space-y-3 overflow-auto p-4">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4">
           {(current?.messages ?? []).map((item) => (
             <div key={item.id} className={`max-w-3xl rounded-2xl px-4 py-3 ${item.role === "user" ? "ml-auto bg-ink text-white dark:bg-white dark:text-ink" : "bg-ink/5 dark:bg-white/10"}`}>
               <p className="whitespace-pre-wrap text-sm leading-6">{item.content}</p>
@@ -163,7 +163,7 @@ export function AssistantChat({ conversations }: { conversations: Conversation[]
           ))}
           {!current && <p className="text-ink/55 dark:text-white/55">Ask about your projects, notes, links, calendar, tasks, and channels. I will cite item names when I use your private context.</p>}
         </div>
-        <div className="border-t border-ink/10 p-4 dark:border-white/10">
+        <div className="shrink-0 border-t border-ink/10 bg-white/70 p-4 backdrop-blur dark:border-white/10 dark:bg-ink/60">
           <div className="flex gap-2">
             <textarea className="field min-h-12 flex-1 resize-none" value={message} placeholder="Add a task to make a YouTube short for Gravedad Lenta this weekend." onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
