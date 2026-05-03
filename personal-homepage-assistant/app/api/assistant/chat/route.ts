@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { aiActionSchema, createPendingAiAction, getConversationWithActions, isActionAllowed, previewText } from "@/lib/ai-actions";
+import { aiActionSchema, createPendingAiAction, getConversationWithActions, isActionAllowed, parseLocalAssistantAction, previewText } from "@/lib/ai-actions";
 import { requireUser } from "@/lib/auth";
 import { getAssistantContext } from "@/lib/context";
 import { prisma } from "@/lib/prisma";
@@ -33,12 +33,14 @@ export async function POST(request: NextRequest) {
   await prisma.chatConversation.update({ where: { id: conversation.id }, data: { useDashboardContext: body.useDashboardContext } });
   const dashboardContext = body.useDashboardContext ? await getAssistantContext() : "Dashboard context disabled.";
 
-  const parsedAction = await parseAssistantAction({
-    apiKey,
-    model,
-    message: body.message,
-    dashboardContext
-  });
+  const parsedAction =
+    parseLocalAssistantAction(body.message) ??
+    (await parseAssistantAction({
+      apiKey,
+      model,
+      message: body.message,
+      dashboardContext
+    }));
 
   if (parsedAction.intent === "follow_up") {
     const followUp = parsedAction.followUp || `I need one detail first: ${parsedAction.missing.join(", ")}.`;
@@ -67,6 +69,8 @@ export async function POST(request: NextRequest) {
     "You are a private personal homepage assistant.",
     "Answer only from the user's request and provided internal dashboard context when context is enabled.",
     "When you refer to internal data, cite the item by its exact name in parentheses, such as (Project: MicroSuspiros).",
+    "You cannot create, update, pin, archive, or save records in normal chat. If asked to do that and no confirmation card appears, say you could not prepare the action and ask the user to try again.",
+    "Never claim that you updated internal dashboard context or saved a new task/site/project/note/link/event unless the server confirmed it.",
     "Be practical, concise, and help the user decide what to do next."
   ].join(" ");
 

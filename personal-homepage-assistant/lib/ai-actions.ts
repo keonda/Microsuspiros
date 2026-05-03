@@ -26,7 +26,7 @@ export const aiActionSchema = z.object({
   followUp: z.string().nullable().optional()
 });
 
-type ParsedAiAction = z.infer<typeof aiActionSchema>;
+export type ParsedAiAction = z.infer<typeof aiActionSchema>;
 
 const nullableString = z.string().trim().optional().nullable().transform((value) => value || null);
 const urlField = z.string().trim().url();
@@ -174,6 +174,247 @@ export async function isActionAllowed(action: string, itemType?: string | null) 
   if ((itemType === "calendar_event" || action === "create_calendar_event") && !settings.calendar) return false;
   if ((itemType === "task" || action === "create_task" || action === "update_task") && !settings.task) return false;
   return true;
+}
+
+export function parseLocalAssistantAction(message: string): ParsedAiAction | null {
+  const text = message.trim();
+  const lower = text.toLowerCase();
+  const dueDate = inferDueDate(text);
+
+  if (/^(add|create|make)\s+(a\s+)?task\b/i.test(text)) {
+    const rawTitle = cleanupTitle(text.replace(/^(add|create|make)\s+(a\s+)?task\s*(to|for|called|named)?\s*/i, ""));
+    if (!rawTitle) return followUp("What should the task be called?", ["title"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_task",
+      itemType: "task",
+      title: rawTitle,
+      fields: {
+        title: rawTitle,
+        description: rawTitle,
+        status: "todo",
+        priority: priorityFromText(lower),
+        dueDate
+      },
+      missing: []
+    });
+  }
+
+  if (/^(add|create)\s+(a\s+)?project\b/i.test(text)) {
+    const rawTitle = cleanupTitle(text.replace(/^(add|create)\s+(a\s+)?project\s*(called|named)?\s*/i, ""));
+    if (!rawTitle) return followUp("What should the project be called?", ["name"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_project",
+      itemType: "project",
+      title: rawTitle,
+      fields: { name: rawTitle, status: "active", priority: priorityFromText(lower) },
+      missing: []
+    });
+  }
+
+  if (/^(add|create)\s+(a\s+)?note\b/i.test(text)) {
+    const body = cleanupTitle(text.replace(/^(add|create)\s+(a\s+)?note\s*(about|called|named)?\s*/i, ""));
+    if (!body) return followUp("What should the note say?", ["body"]);
+    const title = titleCase(body.slice(0, 70));
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_note",
+      itemType: "note",
+      title,
+      fields: { title, body },
+      missing: []
+    });
+  }
+
+  if (/^(add|create)\s+(a\s+)?(site|website)\b/i.test(text) || /\bas a site\b/i.test(text)) {
+    const foundUrl = extractUrl(text);
+    const name = cleanupTitle(text.replace(/^(add|create)\s+(a\s+)?(site|website)\s*/i, "").replace(/\bas a site\.?$/i, "").replace(foundUrl ?? "", ""));
+    if (!foundUrl) return followUp("What URL should I use for the site?", ["url"]);
+    const finalName = name || domainName(foundUrl);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_site",
+      itemType: "site",
+      title: finalName,
+      fields: { name: finalName, url: normalizeUrl(foundUrl), status: "active" },
+      missing: []
+    });
+  }
+
+  if (/^(add|create)\s+(a\s+)?(calendar\s+)?event\b/i.test(text)) {
+    const title = cleanupTitle(text.replace(/^(add|create)\s+(a\s+)?(calendar\s+)?event\s*(for|called|named)?\s*/i, ""));
+    if (!title) return followUp("What should the event be called?", ["title"]);
+    if (!dueDate) return followUp("When should I schedule it?", ["startsAt"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_calendar_event",
+      itemType: "calendar_event",
+      title,
+      fields: { title, startsAt: dueDate, type: eventTypeFromText(lower), description: title },
+      missing: []
+    });
+  }
+
+  if (/^(add|save)\s+(this\s+)?link\b/i.test(text) || /^(add|save).*\bhttps?:\/\//i.test(text)) {
+    const foundUrl = extractUrl(text);
+    if (!foundUrl) return followUp("What URL should I save?", ["url"]);
+    const name = cleanupTitle(text.replace(/^(add|save)\s+(this\s+)?link\s*(to|as|called|named)?\s*/i, "").replace(foundUrl, "")) || domainName(foundUrl);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_quick_link",
+      itemType: "quick_link",
+      title: name,
+      fields: { name, url: normalizeUrl(foundUrl), category: categoryFromText(text), favorite: false },
+      missing: []
+    });
+  }
+
+  if (/^(add|create)\s+(a\s+)?(youtube\s+)?channel\b/i.test(text)) {
+    const foundUrl = extractUrl(text);
+    const name = cleanupTitle(text.replace(/^(add|create)\s+(a\s+)?(youtube\s+)?channel\s*(called|named)?\s*/i, "").replace(foundUrl ?? "", ""));
+    if (!foundUrl) return followUp("What URL should I use for the YouTube channel?", ["url"]);
+    const finalName = name || domainName(foundUrl);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "create_youtube_channel",
+      itemType: "youtube_channel",
+      title: finalName,
+      fields: { name: finalName, url: normalizeUrl(foundUrl) },
+      missing: []
+    });
+  }
+
+  if (/\b(mark|update|set)\b.*\btask\b.*\b(done|doing|todo)\b/i.test(text)) {
+    const status = lower.includes("done") ? "done" : lower.includes("doing") ? "doing" : "todo";
+    const title = cleanupTitle(text.replace(/\b(mark|update|set)\b/i, "").replace(/\b(task|as|to|done|doing|todo)\b/gi, ""));
+    if (!title) return followUp("Which task should I update?", ["title"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "update_task",
+      itemType: "task",
+      title,
+      fields: { title, status },
+      missing: []
+    });
+  }
+
+  if (/\b(mark|update|set)\b.*\bproject\b.*\b(paused|active|archived|complete)\b/i.test(text)) {
+    const status = lower.includes("paused") ? "paused" : lower.includes("archived") ? "archived" : lower.includes("complete") ? "complete" : "active";
+    const name = cleanupTitle(text.replace(/\b(mark|update|set)\b/i, "").replace(/\b(project|as|to|paused|active|archived|complete)\b/gi, ""));
+    if (!name) return followUp("Which project should I update?", ["name"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "update_project",
+      itemType: "project",
+      title: name,
+      fields: { name, status },
+      missing: []
+    });
+  }
+
+  if (/^pin\b/i.test(text)) {
+    const itemType = itemTypeFromText(lower);
+    const name = cleanupTitle(text.replace(/^pin\s*/i, "").replace(/\b(site|project|note|task|event|calendar event|link|channel|youtube channel|to the dashboard|on the dashboard)\b/gi, ""));
+    if (!itemType || !name) return followUp("Which item should I pin?", ["itemType", "name"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "pin_item",
+      itemType,
+      title: name,
+      fields: { itemType, name },
+      missing: []
+    });
+  }
+
+  if (/^(archive|pause)\b/i.test(text)) {
+    const itemType = lower.includes("site") ? "site" : lower.includes("project") ? "project" : null;
+    const name = cleanupTitle(text.replace(/^(archive|pause)\s*/i, "").replace(/\b(site|project)\b/gi, ""));
+    if (!itemType || !name) return followUp("Which site or project should I archive?", ["itemType", "name"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: "archive_item",
+      itemType,
+      title: name,
+      fields: { itemType, name },
+      missing: []
+    });
+  }
+
+  return null;
+}
+
+function followUp(followUp: string, missing: string[]): ParsedAiAction {
+  return { intent: "follow_up", action: null, itemType: null, title: null, fields: {}, missing, followUp };
+}
+
+function cleanupTitle(value: string) {
+  return value
+    .replace(/\b(today|tomorrow|this weekend|next week)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/^["'\s:.-]+|["'\s:.-]+$/g, "")
+    .trim();
+}
+
+function titleCase(value: string) {
+  return value.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
+function extractUrl(value: string) {
+  return value.match(/https?:\/\/[^\s]+|(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s]*)?/i)?.[0]?.replace(/[.,;)]$/, "") ?? null;
+}
+
+function normalizeUrl(value: string) {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function domainName(value: string) {
+  return normalizeUrl(value).replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0];
+}
+
+function priorityFromText(value: string) {
+  if (/\b(urgent|asap)\b/.test(value)) return "urgent";
+  if (/\b(high|important)\b/.test(value)) return "high";
+  if (/\b(low|someday)\b/.test(value)) return "low";
+  return "medium";
+}
+
+function inferDueDate(value: string) {
+  const lower = value.toLowerCase();
+  const date = new Date();
+  if (lower.includes("tomorrow")) date.setDate(date.getDate() + 1);
+  else if (lower.includes("today")) return date.toISOString();
+  else if (lower.includes("this weekend")) {
+    const day = date.getDay();
+    date.setDate(date.getDate() + ((6 - day + 7) % 7 || 7));
+  } else if (lower.includes("next week")) date.setDate(date.getDate() + 7);
+  else return null;
+  date.setHours(9, 0, 0, 0);
+  return date.toISOString();
+}
+
+function eventTypeFromText(value: string) {
+  if (value.includes("upload")) return "upload";
+  if (value.includes("meeting")) return "meeting";
+  if (value.includes("content idea")) return "content_idea";
+  if (value.includes("personal")) return "personal";
+  return "reminder";
+}
+
+function categoryFromText(value: string) {
+  const match = value.match(/\bto my ([a-z0-9\s-]+)$/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+function itemTypeFromText(value: string) {
+  if (value.includes("youtube channel") || value.includes("channel")) return "youtube_channel";
+  if (value.includes("calendar event") || value.includes("event")) return "calendar_event";
+  if (value.includes("site")) return "site";
+  if (value.includes("project")) return "project";
+  if (value.includes("note")) return "note";
+  if (value.includes("task")) return "task";
+  if (value.includes("link")) return "quick_link";
+  return null;
 }
 
 export async function getConversationWithActions(id: string) {
