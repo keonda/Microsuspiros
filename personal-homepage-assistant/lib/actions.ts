@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/crypto";
 import { createSession, hasAdminUser, requireUser } from "@/lib/auth";
+import { defaultTimeZone, isValidTimeZone } from "@/lib/timezone";
 
 const nonEmpty = z.string().trim().min(1);
 const optionalText = z.string().trim().optional().transform((v) => v || null);
@@ -228,6 +229,8 @@ export async function saveSettings(formData: FormData) {
   await requireUser();
   const groqKey = str(formData, "groqApiKey");
   const model = str(formData, "groqModel") || "llama-3.1-8b-instant";
+  const timeZone = str(formData, "timeZone") || defaultTimeZone;
+  if (!isValidTimeZone(timeZone)) throw new Error("Invalid timezone.");
   if (groqKey) {
     await prisma.setting.upsert({
       where: { key: "groqApiKey" },
@@ -239,6 +242,11 @@ export async function saveSettings(formData: FormData) {
     where: { key: "groqModel" },
     create: { key: "groqModel", value: model },
     update: { value: model }
+  });
+  await prisma.setting.upsert({
+    where: { key: "timeZone" },
+    create: { key: "timeZone", value: timeZone },
+    update: { value: timeZone }
   });
   const toggles = [
     "assistantActionsCreate",

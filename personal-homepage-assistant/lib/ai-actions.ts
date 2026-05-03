@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { defaultTimeZone, zonedDateAtHour } from "@/lib/timezone";
 
 export const actionNames = [
   "create_site",
@@ -176,10 +177,10 @@ export async function isActionAllowed(action: string, itemType?: string | null) 
   return true;
 }
 
-export function parseLocalAssistantAction(message: string): ParsedAiAction | null {
+export function parseLocalAssistantAction(message: string, timeZone = defaultTimeZone): ParsedAiAction | null {
   const text = message.trim();
   const lower = text.toLowerCase();
-  const dueDate = inferDueDate(text);
+  const dueDate = inferDueDate(text, timeZone);
 
   if (/^(add|create|make)\s+(a\s+)?task\b/i.test(text)) {
     const rawTitle = cleanupTitle(text.replace(/^(add|create|make)\s+(a\s+)?task\s*(to|for|called|named)?\s*/i, ""));
@@ -379,18 +380,15 @@ function priorityFromText(value: string) {
   return "medium";
 }
 
-function inferDueDate(value: string) {
+function inferDueDate(value: string, timeZone: string) {
   const lower = value.toLowerCase();
-  const date = new Date();
-  if (lower.includes("tomorrow")) date.setDate(date.getDate() + 1);
-  else if (lower.includes("today")) return date.toISOString();
+  if (lower.includes("tomorrow")) return zonedDateAtHour(timeZone, 1).toISOString();
+  else if (lower.includes("today")) return new Date().toISOString();
   else if (lower.includes("this weekend")) {
-    const day = date.getDay();
-    date.setDate(date.getDate() + ((6 - day + 7) % 7 || 7));
-  } else if (lower.includes("next week")) date.setDate(date.getDate() + 7);
+    const jsDay = new Date().getDay();
+    return zonedDateAtHour(timeZone, (6 - jsDay + 7) % 7 || 7).toISOString();
+  } else if (lower.includes("next week")) return zonedDateAtHour(timeZone, 7).toISOString();
   else return null;
-  date.setHours(9, 0, 0, 0);
-  return date.toISOString();
 }
 
 function eventTypeFromText(value: string) {

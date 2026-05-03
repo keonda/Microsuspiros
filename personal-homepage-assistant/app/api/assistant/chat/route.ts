@@ -4,6 +4,7 @@ import { aiActionSchema, createPendingAiAction, getConversationWithActions, isAc
 import { requireUser } from "@/lib/auth";
 import { getAssistantContext } from "@/lib/context";
 import { prisma } from "@/lib/prisma";
+import { getAppTimeZone } from "@/lib/timezone";
 
 export async function POST(request: NextRequest) {
   await requireUser();
@@ -32,14 +33,16 @@ export async function POST(request: NextRequest) {
   await prisma.chatMessage.create({ data: { conversationId: conversation.id, role: "user", content: body.message } });
   await prisma.chatConversation.update({ where: { id: conversation.id }, data: { useDashboardContext: body.useDashboardContext } });
   const dashboardContext = body.useDashboardContext ? await getAssistantContext() : "Dashboard context disabled.";
+  const timeZone = await getAppTimeZone();
 
   const parsedAction =
-    parseLocalAssistantAction(body.message) ??
+    parseLocalAssistantAction(body.message, timeZone) ??
     (await parseAssistantAction({
       apiKey,
       model,
       message: body.message,
-      dashboardContext
+      dashboardContext,
+      timeZone
     }));
 
   if (parsedAction.intent === "follow_up") {
@@ -116,12 +119,14 @@ async function parseAssistantAction({
   apiKey,
   model,
   message,
-  dashboardContext
+  dashboardContext,
+  timeZone
 }: {
   apiKey: string;
   model: string;
   message: string;
   dashboardContext: string;
+  timeZone: string;
 }) {
   const today = new Date().toISOString();
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -149,7 +154,7 @@ async function parseAssistantAction({
             "For relative dates, infer an ISO datetime from today's ISO date. If too ambiguous, ask follow_up.",
             "For update_task, include title plus fields to change. For update_project, include name plus fields to change.",
             "For pin_item/archive_item, include fields.itemType and fields.name.",
-            `Today is ${today}.`
+            `Today is ${today}. The user's configured timezone is ${timeZone}.`
           ].join(" ")
         },
         { role: "system", content: `Dashboard context for matching existing item names:\n${dashboardContext}` },

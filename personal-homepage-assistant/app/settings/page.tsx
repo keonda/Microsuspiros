@@ -3,6 +3,7 @@ import { Checkbox, PageTitle, TextInput } from "@/components/crud";
 import { saveSettings } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { defaultTimeZone } from "@/lib/timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { saved } = await searchParams;
   const settings = await prisma.setting.findMany();
   const model = settings.find((item) => item.key === "groqModel")?.value ?? "llama-3.1-8b-instant";
+  const timeZone = settings.find((item) => item.key === "timeZone")?.value ?? defaultTimeZone;
   const hasKey = Boolean(settings.find((item) => item.key === "groqApiKey")?.value);
   const enabled = (key: string) => settings.find((item) => item.key === key)?.value !== "false";
 
@@ -27,7 +29,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </div>
         <TextInput label="Groq API key" name="groqApiKey" type="password" />
         <TextInput label="Groq model" name="groqModel" defaultValue={model} />
-        <p className="text-sm text-ink/55 dark:text-white/55">Default model uses Groq’s production `llama-3.1-8b-instant`. You can paste another supported model ID here later.</p>
+        <p className="text-sm text-ink/55 dark:text-white/55">Default model uses Groq production `llama-3.1-8b-instant`. You can paste another supported model ID here later.</p>
+        <div className="rounded-2xl border border-ink/10 bg-ink/5 p-4 dark:border-white/10 dark:bg-white/10">
+          <h2 className="mb-3 text-lg font-bold">Time Zone</h2>
+          <label className="grid gap-1.5">
+            <span className="label">Timezone</span>
+            <select className="field" name="timeZone" defaultValue={timeZone}>
+              {["America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York", "America/Puerto_Rico", "UTC", "Europe/Madrid"].map((zone) => (
+                <option key={zone} value={zone}>{zone}</option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-2 text-sm text-ink/55 dark:text-white/55">Assistant actions use this for relative dates like tomorrow, today, this weekend, and next week.</p>
+        </div>
         <div className="rounded-2xl border border-ink/10 bg-ink/5 p-4 dark:border-white/10 dark:bg-white/10">
           <h2 className="mb-3 text-lg font-bold">Assistant Actions</h2>
           <div className="grid gap-3 sm:grid-cols-2">

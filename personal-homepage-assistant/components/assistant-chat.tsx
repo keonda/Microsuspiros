@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Check, Plus, Send, X } from "lucide-react";
+import { Bot, Check, Plus, Send, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 type PendingAction = {
@@ -62,6 +62,22 @@ export function AssistantChat({ conversations }: { conversations: Conversation[]
     setLoading(false);
   }
 
+  async function deleteConversation(id: string) {
+    if (!window.confirm("Delete this chat?")) return;
+    setLoading(true);
+    const response = await fetch("/api/assistant/conversations/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id })
+    });
+    const data = await response.json();
+    if (data.deletedId) {
+      setItems((prev) => prev.filter((item) => item.id !== data.deletedId));
+      if (currentId === data.deletedId) setCurrentId("");
+    }
+    setLoading(false);
+  }
+
   function startNew() {
     setCurrentId("");
     setMessage("");
@@ -76,12 +92,17 @@ export function AssistantChat({ conversations }: { conversations: Conversation[]
         </button>
         <div className="space-y-1">
           {items.map((item) => (
-            <button key={item.id} className={`w-full rounded-xl px-3 py-2 text-left text-sm font-semibold ${item.id === currentId ? "bg-ink text-white dark:bg-white dark:text-ink" : "hover:bg-ink/5 dark:hover:bg-white/10"}`} onClick={() => {
-              setCurrentId(item.id);
-              setUseContext(item.useDashboardContext);
-            }}>
-              {item.title}
-            </button>
+            <div key={item.id} className={`group flex items-center gap-1 rounded-xl ${item.id === currentId ? "bg-ink text-white dark:bg-white dark:text-ink" : "hover:bg-ink/5 dark:hover:bg-white/10"}`}>
+              <button className="min-w-0 flex-1 px-3 py-2 text-left text-sm font-semibold" onClick={() => {
+                setCurrentId(item.id);
+                setUseContext(item.useDashboardContext);
+              }}>
+                <span className="block truncate">{item.title}</span>
+              </button>
+              <button className="mr-1 grid size-8 place-items-center rounded-lg opacity-70 hover:bg-coral/15 hover:text-coral" onClick={() => void deleteConversation(item.id)} title="Delete chat" disabled={loading}>
+                <Trash2 size={15} />
+              </button>
+            </div>
           ))}
         </div>
       </aside>
