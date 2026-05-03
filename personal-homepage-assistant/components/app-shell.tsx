@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { logout } from "@/lib/auth";
-import { Bot, CalendarDays, CheckSquare, Globe2, Home, Link2, LogOut, NotebookPen, PlaySquare, Search, Settings, Sparkles } from "lucide-react";
+import { Bot, CalendarDays, CheckSquare, Film, Globe2, Home, Link2, LogOut, NotebookPen, PlaySquare, Search, Settings, Sparkles } from "lucide-react";
 import { SearchBox } from "@/components/search-box";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -13,6 +13,7 @@ const nav = [
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/links", label: "Links", icon: Link2 },
+  { href: "/media", label: "Media", icon: Film },
   { href: "/assistant", label: "Assistant", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings }
 ];

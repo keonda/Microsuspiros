@@ -3,6 +3,7 @@ import { Bot, CheckCircle2, ExternalLink, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { completeTask } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
+import { getAllMediaOverview } from "@/lib/integrations";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -11,13 +12,14 @@ export default async function DashboardPage() {
   await requireUser();
   const now = new Date();
   const soon = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
-  const [links, projects, events, tasks, notes, activity] = await Promise.all([
+  const [links, projects, events, tasks, notes, activity, media] = await Promise.all([
     prisma.quickLink.findMany({ where: { OR: [{ favorite: true }, { pinned: true }] }, orderBy: [{ favorite: "desc" }, { updatedAt: "desc" }], take: 8 }),
     prisma.project.findMany({ where: { status: "active" }, orderBy: [{ priority: "desc" }, { updatedAt: "desc" }], take: 6 }),
     prisma.calendarEvent.findMany({ where: { startsAt: { gte: now, lte: soon } }, orderBy: { startsAt: "asc" }, take: 6 }),
     prisma.task.findMany({ where: { status: { not: "done" } }, orderBy: [{ dueDate: "asc" }, { priority: "desc" }], take: 6, include: { project: true } }),
     prisma.note.findMany({ orderBy: { updatedAt: "desc" }, take: 5, include: { project: true } }),
-    prisma.activityLog.findMany({ orderBy: { createdAt: "desc" }, take: 8 })
+    prisma.activityLog.findMany({ orderBy: { createdAt: "desc" }, take: 8 }),
+    getAllMediaOverview(false)
   ]);
 
   return (
@@ -91,6 +93,25 @@ export default async function DashboardPage() {
         <div className="card">
           <h2 className="mb-3 font-bold">Recently updated</h2>
           {activity.map((item) => <p key={item.id} className="mb-2 rounded-xl bg-ink/5 p-3 text-sm dark:bg-white/10"><strong>{item.itemName}</strong> {item.action} <span className="text-ink/45 dark:text-white/45">({item.itemType})</span></p>)}
+        </div>
+      </section>
+      <section className="mt-4">
+        <div className="card">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="font-bold">Media overview</h2>
+            <Link href="/media" className="btn btn-soft py-1.5">Open Media</Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[media.plex, media.sonarr, media.radarr].map((item) => (
+              <div key={item.kind} className="rounded-xl bg-ink/5 p-3 dark:bg-white/10">
+                <div className="flex items-center justify-between gap-2">
+                  <strong>{item.name}</strong>
+                  <span className={`badge ${item.status === "online" ? "text-moss" : item.status === "disabled" ? "" : "text-coral"}`}>{item.status}</span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-sm text-ink/55 dark:text-white/55">{item.error ?? (Object.entries(item.stats).slice(0, 2).map(([key, value]) => `${key}: ${value}`).join(" - ") || "No cached stats yet.")}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </AppShell>

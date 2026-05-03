@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/crypto";
 import { createSession, hasAdminUser, requireUser } from "@/lib/auth";
 import { defaultTimeZone, isValidTimeZone } from "@/lib/timezone";
+import { saveIntegrationSettings } from "@/lib/integrations";
 
 const nonEmpty = z.string().trim().min(1);
 const optionalText = z.string().trim().optional().transform((v) => v || null);
@@ -263,4 +264,10 @@ export async function saveSettings(formData: FormData) {
     });
   }
   redirect("/settings?saved=1");
+}
+
+export async function saveIntegrations(formData: FormData) {
+  await requireUser();
+  await saveIntegrationSettings(formData);
+  redirect("/media?saved=1");
 }

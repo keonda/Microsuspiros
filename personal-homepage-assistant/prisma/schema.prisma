@@ -49,6 +49,12 @@ enum ChatRole {
   system
 }
 
+enum IntegrationKind {
+  plex
+  sonarr
+  radarr
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -224,4 +230,45 @@ model PendingAiAction {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model Integration {
+  id          String                  @id @default(cuid())
+  kind        IntegrationKind
+  name        String
+  baseUrl     String
+  enabled     Boolean                 @default(false)
+  lastStatus  String?
+  lastError   String?
+  lastChecked DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  credentials IntegrationCredential[]
+  caches      IntegrationCache[]
+
+  @@unique([kind])
+}
+
+model IntegrationCredential {
+  id            String      @id @default(cuid())
+  integrationId String
+  key           String
+  value         String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, key])
+}
+
+model IntegrationCache {
+  id            String      @id @default(cuid())
+  integrationId String
+  key           String
+  data          Json
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, key])
 }
