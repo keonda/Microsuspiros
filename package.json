@@ -7,7 +7,11 @@
   "scripts": {
     "build": "npm --workspace personal-homepage-assistant run build",
     "start": "npm --workspace personal-homepage-assistant run prisma:deploy && npm --workspace personal-homepage-assistant run start",
-    "dev": "npm --workspace personal-homepage-assistant run dev"
+    "dev": "npm --workspace personal-homepage-assistant run dev",
+    "prisma:generate": "npm --workspace personal-homepage-assistant run prisma:generate",
+    "prisma:migrate": "npm --workspace personal-homepage-assistant run prisma:migrate",
+    "prisma:deploy": "npm --workspace personal-homepage-assistant run prisma:deploy",
+    "db:seed": "npm --workspace personal-homepage-assistant run db:seed"
   },
   "engines": {
     "node": ">=20"

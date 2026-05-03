@@ -47,6 +47,14 @@ npm run prisma:generate
 npm run prisma:migrate
 ```
 
+From the repository root, these also work:
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:deploy
+```
+
 Optional demo data, no credentials:
 
 ```bash
