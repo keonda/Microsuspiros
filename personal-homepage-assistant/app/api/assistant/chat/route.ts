@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { aiActionSchema, createPendingAiAction, getConversationWithActions, isActionAllowed, previewText } from "@/lib/ai-actions";
 import { requireUser } from "@/lib/auth";
 import { getAssistantContext } from "@/lib/context";
 import { prisma } from "@/lib/prisma";
@@ -30,6 +31,37 @@ export async function POST(request: NextRequest) {
 
   await prisma.chatMessage.create({ data: { conversationId: conversation.id, role: "user", content: body.message } });
   await prisma.chatConversation.update({ where: { id: conversation.id }, data: { useDashboardContext: body.useDashboardContext } });
+  const dashboardContext = body.useDashboardContext ? await getAssistantContext() : "Dashboard context disabled.";
+
+  const parsedAction = await parseAssistantAction({
+    apiKey,
+    model,
+    message: body.message,
+    dashboardContext
+  });
+
+  if (parsedAction.intent === "follow_up") {
+    const followUp = parsedAction.followUp || `I need one detail first: ${parsedAction.missing.join(", ")}.`;
+    await prisma.chatMessage.create({ data: { conversationId: conversation.id, role: "assistant", content: followUp } });
+    return NextResponse.json({ conversation: await getConversationWithActions(conversation.id) });
+  }
+
+  if (parsedAction.intent === "action" && parsedAction.action && parsedAction.itemType && parsedAction.title) {
+    if (!(await isActionAllowed(parsedAction.action, parsedAction.itemType))) {
+      await prisma.chatMessage.create({
+        data: {
+          conversationId: conversation.id,
+          role: "assistant",
+          content: "That assistant action type is disabled in Settings. I did not prepare a database change."
+        }
+      });
+      return NextResponse.json({ conversation: await getConversationWithActions(conversation.id) });
+    }
+
+    await createPendingAiAction(conversation.id, parsedAction);
+    await prisma.chatMessage.create({ data: { conversationId: conversation.id, role: "assistant", content: previewText(parsedAction) } });
+    return NextResponse.json({ conversation: await getConversationWithActions(conversation.id) });
+  }
 
   const system = [
     "You are a private personal homepage assistant.",
@@ -38,7 +70,6 @@ export async function POST(request: NextRequest) {
     "Be practical, concise, and help the user decide what to do next."
   ].join(" ");
 
-  const dashboardContext = body.useDashboardContext ? await getAssistantContext() : "Dashboard context disabled.";
   const history = await prisma.chatMessage.findMany({
     where: { conversationId: conversation.id },
     orderBy: { createdAt: "asc" },
@@ -72,10 +103,66 @@ export async function POST(request: NextRequest) {
   const answer = data.choices?.[0]?.message?.content ?? "I could not generate a response.";
   await prisma.chatMessage.create({ data: { conversationId: conversation.id, role: "assistant", content: answer } });
 
-  const fresh = await prisma.chatConversation.findUnique({
-    where: { id: conversation.id },
-    include: { messages: { orderBy: { createdAt: "asc" } } }
-  });
+  const fresh = await getConversationWithActions(conversation.id);
 
   return NextResponse.json({ conversation: fresh });
+}
+
+async function parseAssistantAction({
+  apiKey,
+  model,
+  message,
+  dashboardContext
+}: {
+  apiKey: string;
+  model: string;
+  message: string;
+  dashboardContext: string;
+}) {
+  const today = new Date().toISOString();
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      response_format: { type: "json_object" },
+      temperature: 0,
+      max_tokens: 900,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You convert user messages into JSON for a private dashboard app.",
+            "Return only JSON matching this shape:",
+            '{"intent":"none|action|follow_up","action":"create_site|create_project|create_note|create_task|create_calendar_event|create_quick_link|create_youtube_channel|update_task|update_project|pin_item|archive_item|null","itemType":"site|project|note|task|calendar_event|quick_link|youtube_channel|null","title":"string|null","fields":{},"missing":[],"followUp":"string|null"}',
+            "Use intent none for ordinary questions or requests that do not imply a database change.",
+            "Use follow_up only when a required field is missing. Keep followUp short.",
+            "Never claim the action was saved. This parser only prepares a pending action.",
+            "Required create fields: site needs name and url; project needs name; note needs title and body; task needs title; calendar event needs title and startsAt ISO datetime; quick link needs name and url; YouTube channel needs name and url.",
+            "For relative dates, infer an ISO datetime from today's ISO date. If too ambiguous, ask follow_up.",
+            "For update_task, include title plus fields to change. For update_project, include name plus fields to change.",
+            "For pin_item/archive_item, include fields.itemType and fields.name.",
+            `Today is ${today}.`
+          ].join(" ")
+        },
+        { role: "system", content: `Dashboard context for matching existing item names:\n${dashboardContext}` },
+        { role: "user", content: message }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    return { intent: "none", fields: {}, missing: [] } as const;
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content ?? "{}";
+  try {
+    return aiActionSchema.parse(JSON.parse(content));
+  } catch {
+    return { intent: "none", fields: {}, missing: [] } as const;
+  }
 }

@@ -240,5 +240,19 @@ export async function saveSettings(formData: FormData) {
     create: { key: "groqModel", value: model },
     update: { value: model }
   });
+  const toggles = [
+    "assistantActionsCreate",
+    "assistantActionsUpdate",
+    "assistantActionsArchive",
+    "assistantActionsCalendar",
+    "assistantActionsTask"
+  ];
+  for (const key of toggles) {
+    await prisma.setting.upsert({
+      where: { key },
+      create: { key, value: boolFromForm(formData.get(key)) ? "true" : "false" },
+      update: { value: boolFromForm(formData.get(key)) ? "true" : "false" }
+    });
+  }
   redirect("/settings?saved=1");
 }
