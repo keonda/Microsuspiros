@@ -6,6 +6,13 @@ import { prisma } from "@/lib/prisma";
 const cacheMs = 1000 * 60 * 5;
 const safeUrl = z.string().trim().url();
 
+export type MediaSectionItem = {
+  title: string;
+  subtitle?: string | null;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+};
+
 export type MediaSummary = {
   kind: IntegrationKind;
   name: string;
@@ -14,7 +21,7 @@ export type MediaSummary = {
   error?: string;
   lastUpdated?: string;
   stats: Record<string, number | string | boolean | null>;
-  sections: { title: string; items: string[] }[];
+  sections: { title: string; items: Array<string | MediaSectionItem> }[];
 };
 
 export async function saveIntegrationSettings(formData: FormData) {
@@ -170,6 +177,9 @@ async function arrOverview(kind: "sonarr" | "radarr", name: string, baseUrl: str
   const queueRecords = Array.isArray(queue?.records) ? queue.records : [];
   const upcoming = Array.isArray(calendar) ? calendar : [];
   const collectionLookup = buildCollectionLookup(kind, collection);
+  const wantedItems = await enrichWithAniList(missingRecords.slice(0, 8).map((item: any) => arrItem(kind, item, collectionLookup)));
+  const upcomingItems = await enrichWithAniList(upcoming.slice(0, 8).map((item: any) => arrItem(kind, item, collectionLookup)));
+  const queueItems = await enrichWithAniList(queueRecords.slice(0, 8).map((item: any) => arrItem(kind, item, collectionLookup, item.title)));
   return {
     kind,
     name,
@@ -183,9 +193,9 @@ async function arrOverview(kind: "sonarr" | "radarr", name: string, baseUrl: str
       queue: Number(queue?.totalRecords ?? queueRecords.length)
     },
     sections: [
-      { title: kind === "sonarr" ? "Wanted episodes" : "Wanted movies", items: missingRecords.slice(0, 8).map((item: any) => arrTitle(kind, item, collectionLookup)) },
-      { title: "Upcoming", items: upcoming.slice(0, 8).map((item: any) => arrTitle(kind, item, collectionLookup)) },
-      { title: "Download queue", items: queueRecords.slice(0, 8).map((item: any) => arrTitle(kind, item, collectionLookup, item.title)) }
+      { title: kind === "sonarr" ? "Wanted episodes" : "Wanted movies", items: wantedItems },
+      { title: "Upcoming", items: upcomingItems },
+      { title: "Download queue", items: queueItems }
     ]
   };
 }
@@ -220,7 +230,7 @@ function summarizeForAi(summary: MediaSummary) {
     status: summary.status,
     error: summary.error,
     stats: summary.stats,
-    sections: summary.sections.map((section) => ({ title: section.title, items: section.items.slice(0, 8) })),
+    sections: summary.sections.map((section) => ({ title: section.title, items: section.items.slice(0, 8).map(itemTitle) })),
     lastUpdated: summary.lastUpdated
   };
 }
@@ -235,13 +245,20 @@ function buildCollectionLookup(kind: "sonarr" | "radarr", collection: any) {
 }
 
 function arrTitle(kind: "sonarr" | "radarr", item: any, lookup: Map<any, string>, queueTitle?: string) {
+  return arrItem(kind, item, lookup, queueTitle).title;
+}
+
+function arrItem(kind: "sonarr" | "radarr", item: any, lookup: Map<any, string>, queueTitle?: string): MediaSectionItem {
   if (kind === "sonarr") {
     const seriesTitle = item.series?.title ?? lookup.get(item.seriesId) ?? item.seriesTitle ?? queueTitle;
     const episodeTitle = item.title ?? item.episodeTitle;
     const episodeNumber = formatEpisodeNumber(item);
-    return [seriesTitle, episodeNumber, episodeTitle].filter(Boolean).join(" - ") || "Untitled episode";
+    return {
+      title: seriesTitle ?? "Untitled anime",
+      subtitle: [episodeNumber, episodeTitle].filter(Boolean).join(" - ") || null
+    };
   }
-  return movieTitle(item.movie) ?? lookup.get(item.movieId) ?? movieTitle(item) ?? queueTitle ?? "Untitled movie";
+  return { title: movieTitle(item.movie) ?? lookup.get(item.movieId) ?? movieTitle(item) ?? queueTitle ?? "Untitled movie" };
 }
 
 function formatEpisodeNumber(item: any) {
@@ -256,6 +273,57 @@ function movieTitle(item: any) {
   const title = item.title ?? item.movie?.title;
   const year = item.year ?? item.movie?.year;
   return title && year ? `${title} (${year})` : title ?? null;
+}
+
+async function enrichWithAniList(items: MediaSectionItem[]) {
+  const unique = [...new Map(items.map((item) => [cleanAniListSearchTitle(item.title), item.title])).entries()].slice(0, 8);
+  const covers = new Map<string, Awaited<ReturnType<typeof fetchAniListCover>>>();
+  await Promise.all(unique.map(async ([searchTitle, originalTitle]) => {
+    const cover = await fetchAniListCover(searchTitle);
+    if (cover) covers.set(originalTitle, cover);
+  }));
+  return items.map((item) => {
+    const cover = covers.get(item.title);
+    return cover ? { ...item, imageUrl: cover.imageUrl, sourceUrl: cover.sourceUrl } : item;
+  });
+}
+
+async function fetchAniListCover(search: string) {
+  if (!search || search.length < 2) return null;
+  try {
+    const response = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        query: `query ($search: String) {
+          Media(search: $search, type: ANIME) {
+            id
+            siteUrl
+            title { romaji english native }
+            coverImage { medium large color }
+          }
+        }`,
+        variables: { search }
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const media = data?.data?.Media;
+    const imageUrl = media?.coverImage?.large ?? media?.coverImage?.medium;
+    return imageUrl ? { imageUrl, sourceUrl: media?.siteUrl ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+
+function cleanAniListSearchTitle(title: string) {
+  return title.replace(/\(\d{4}\)/g, "").trim();
+}
+
+function itemTitle(item: string | MediaSectionItem) {
+  return typeof item === "string" ? item : [item.title, item.subtitle].filter(Boolean).join(" - ");
 }
 
 function credentialKey(kind: IntegrationKind) {

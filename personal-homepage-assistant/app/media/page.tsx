@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { PageTitle, TextInput } from "@/components/crud";
 import { saveIntegrations } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
-import { getAllMediaOverview, getConfiguredIntegrations, MediaSummary } from "@/lib/integrations";
+import { getAllMediaOverview, getConfiguredIntegrations, MediaSectionItem, MediaSummary } from "@/lib/integrations";
 
 export const dynamic = "force-dynamic";
 
@@ -65,13 +65,33 @@ function MediaCard({ summary }: { summary: MediaSummary }) {
         <div key={section.title} className="mt-3">
           <h3 className="mb-1 text-sm font-bold">{section.title}</h3>
           <div className="space-y-1">
-            {(section.items.length ? section.items : ["Nothing to show"]).slice(0, 5).map((item) => <p key={item} className="line-clamp-1 rounded-lg bg-ink/5 px-2 py-1 text-sm dark:bg-white/10">{item}</p>)}
+            {(section.items.length ? section.items : ["Nothing to show"]).slice(0, 5).map((item) => <MediaListItem key={mediaItemKey(item)} item={item} />)}
           </div>
         </div>
       ))}
       {summary.lastUpdated && <p className="mt-3 text-xs text-ink/45 dark:text-white/45">Last updated {new Date(summary.lastUpdated).toLocaleString()}</p>}
     </article>
   );
+}
+
+function MediaListItem({ item }: { item: string | MediaSectionItem }) {
+  if (typeof item === "string") {
+    return <p className="line-clamp-1 rounded-lg bg-ink/5 px-2 py-1 text-sm dark:bg-white/10">{item}</p>;
+  }
+  const body = (
+    <div className="flex min-w-0 items-center gap-2 rounded-lg bg-ink/5 p-2 text-sm dark:bg-white/10">
+      {item.imageUrl && <img src={item.imageUrl} alt="" className="h-12 w-9 shrink-0 rounded object-cover" />}
+      <div className="min-w-0">
+        <p className="line-clamp-1 font-semibold">{item.title}</p>
+        {item.subtitle && <p className="line-clamp-1 text-xs text-ink/55 dark:text-white/55">{item.subtitle}</p>}
+      </div>
+    </div>
+  );
+  return item.sourceUrl ? <a href={item.sourceUrl} target="_blank">{body}</a> : body;
+}
+
+function mediaItemKey(item: string | MediaSectionItem) {
+  return typeof item === "string" ? item : `${item.title}-${item.subtitle ?? ""}`;
 }
 
 function IntegrationFields({ kind, title, urlLabel, secretLabel, configured }: { kind: "plex" | "sonarr" | "radarr"; title: string; urlLabel: string; secretLabel: string; configured?: { name: string; baseUrl: string; enabled: boolean } }) {
