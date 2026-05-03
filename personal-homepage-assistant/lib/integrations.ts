@@ -5,6 +5,15 @@ import { prisma } from "@/lib/prisma";
 
 const cacheMs = 1000 * 60 * 5;
 const safeUrl = z.string().trim().url();
+const plexClientId = "personal-homepage-assistant";
+const plexHeaders = {
+  "X-Plex-Client-Identifier": plexClientId,
+  "X-Plex-Product": "Personal Homepage Assistant",
+  "X-Plex-Version": "1.0.0",
+  "X-Plex-Platform": "Web",
+  "X-Plex-Device": "Personal Homepage Assistant",
+  Accept: "application/json"
+};
 
 export type MediaSectionItem = {
   title: string;
@@ -22,6 +31,12 @@ export type MediaSummary = {
   lastUpdated?: string;
   stats: Record<string, number | string | boolean | null>;
   sections: { title: string; items: Array<string | MediaSectionItem> }[];
+};
+
+type PlexServerResource = {
+  name: string;
+  owned: boolean;
+  uri: string;
 };
 
 export async function saveIntegrationSettings(formData: FormData) {
@@ -136,16 +151,18 @@ async function fetchOverview(integration: Awaited<ReturnType<typeof getIntegrati
 }
 
 async function plexOverview(name: string, baseUrl: string, token: string): Promise<MediaSummary> {
-  const [identity, libraries, recent, sessions] = await Promise.all([
+  const [identity, libraries, recent, sessions, history, continueWatching] = await Promise.all([
     plexFetch(baseUrl, "/identity", token),
     plexFetch(baseUrl, "/library/sections", token),
     plexFetch(baseUrl, "/library/recentlyAdded", token),
-    plexFetch(baseUrl, "/status/sessions", token)
+    plexFetch(baseUrl, "/status/sessions", token),
+    plexFetchOptional(baseUrl, "/status/sessions/history/all?sort=viewedAt:desc&X-Plex-Container-Size=8", token),
+    plexFetchOptional(baseUrl, "/hubs/home/continueWatching", token)
   ]);
   const libraryNames = [...libraries.matchAll(/<Directory[^>]+title="([^"]+)"[^>]*type="([^"]+)"/g)].map((match) => `${decodeXml(match[1])} (${match[2]})`);
-  const recentItems = [...recent.matchAll(/<(?:Video|Directory)[^>]+title="([^"]+)"[^>]*(?:grandparentTitle="([^"]+)")?[^>]*>/g)]
-    .slice(0, 8)
-    .map((match) => decodeXml(match[2] ? `${match[2]} - ${match[1]}` : match[1]));
+  const recentItems = plexVideoTitles(recent).slice(0, 8);
+  const historyItems = plexVideoTitles(history).slice(0, 8);
+  const continueItems = plexVideoTitles(continueWatching).slice(0, 8);
   const activeStreams = Number(sessions.match(/size="(\d+)"/)?.[1] ?? 0);
   return {
     kind: "plex",
@@ -157,6 +174,8 @@ async function plexOverview(name: string, baseUrl: string, token: string): Promi
     sections: [
       { title: "Libraries", items: libraryNames.slice(0, 8) },
       { title: "Recently added", items: recentItems },
+      { title: "Continue watching", items: continueItems },
+      { title: "Recently watched", items: historyItems },
       { title: "Active streams", items: activeStreams ? [`${activeStreams} active stream(s)`] : ["No active streams"] }
     ]
   };
@@ -205,6 +224,62 @@ export async function testIntegration(kind: IntegrationKind) {
   return { ok: summary.status === "online", summary };
 }
 
+export async function createPlexPin() {
+  const response = await fetch("https://plex.tv/api/v2/pins?strong=true", {
+    method: "POST",
+    headers: plexHeaders,
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) throw new Error(`Plex PIN request failed with ${response.status}.`);
+  const data = await response.json();
+  return {
+    id: data.id,
+    code: data.code,
+    expiresAt: data.expiresAt,
+    authUrl: `https://plex.tv/link?code=${encodeURIComponent(data.code)}`
+  };
+}
+
+export async function checkPlexPin(pinId: number) {
+  const response = await fetch(`https://plex.tv/api/v2/pins/${pinId}`, {
+    headers: plexHeaders,
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) throw new Error(`Plex PIN check failed with ${response.status}.`);
+  const data = await response.json();
+  if (!data.authToken) return { connected: false as const };
+
+  const server = await fetchPlexServerResource(data.authToken);
+  const integration = await prisma.integration.upsert({
+    where: { kind: "plex" },
+    create: {
+      kind: "plex",
+      name: server.name,
+      baseUrl: server.uri,
+      enabled: true,
+      lastStatus: "online",
+      lastChecked: new Date()
+    },
+    update: {
+      name: server.name,
+      baseUrl: server.uri,
+      enabled: true,
+      lastStatus: "online",
+      lastError: null,
+      lastChecked: new Date()
+    }
+  });
+  await prisma.integrationCredential.upsert({
+    where: { integrationId_key: { integrationId: integration.id, key: "token" } },
+    create: { integrationId: integration.id, key: "token", value: encryptSecret(data.authToken) },
+    update: { value: encryptSecret(data.authToken) }
+  });
+  await getOverview("plex", true);
+  return { connected: true as const, server };
+}
+
 function getCredential(integration: NonNullable<Awaited<ReturnType<typeof getIntegration>>>) {
   const item = integration.credentials.find((credential) => credential.key === credentialKey(integration.kind));
   if (!item) throw new Error(`${labelFor(integration.kind)} credentials are missing.`);
@@ -215,6 +290,60 @@ async function plexFetch(baseUrl: string, path: string, token: string) {
   const response = await fetch(`${baseUrl}${path}?X-Plex-Token=${encodeURIComponent(token)}`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(`Plex returned ${response.status}.`);
   return response.text();
+}
+
+async function plexFetchOptional(baseUrl: string, path: string, token: string) {
+  try {
+    return await plexFetch(baseUrl, path, token);
+  } catch {
+    return "";
+  }
+}
+
+function plexVideoTitles(xml: string) {
+  return [...xml.matchAll(/<Video[^>]+title="([^"]+)"[^>]*(?:grandparentTitle="([^"]+)")?[^>]*(?:parentTitle="([^"]+)")?[^>]*>/g)].map((match) => {
+    const title = decodeXml(match[1]);
+    const grandparent = match[2] ? decodeXml(match[2]) : null;
+    const parent = match[3] ? decodeXml(match[3]) : null;
+    return [grandparent, parent, title].filter(Boolean).join(" - ");
+  });
+}
+
+async function fetchPlexServerResource(token: string) {
+  const response = await fetch("https://plex.tv/api/resources?includeHttps=1", {
+    headers: { ...plexHeaders, "X-Plex-Token": token },
+    cache: "no-store",
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error(`Unable to fetch Plex servers (${response.status}).`);
+  const text = await response.text();
+  const servers = parsePlexResources(text);
+  const server = servers.find((item) => item.owned && item.uri) ?? servers.find((item) => item.uri);
+  if (!server) throw new Error("Plex login worked, but no reachable Plex Media Server was found.");
+  return server;
+}
+
+function parsePlexResources(text: string): PlexServerResource[] {
+  try {
+    const data = JSON.parse(text);
+    const devices = data.MediaContainer?.Device ?? data.devices ?? [];
+    return devices.flatMap((device: any) => {
+      const connections = Array.isArray(device.Connection) ? device.Connection : [];
+      return connections.map((connection: any) => ({
+        name: device.name ?? device.provides ?? "Plex Server",
+        owned: device.owned === "1" || device.owned === 1 || device.owned === true,
+        uri: connection.uri
+      }));
+    });
+  } catch {
+    return [...text.matchAll(/<Device[^>]+name="([^"]+)"[^>]*owned="([^"]*)"[^>]*>([\s\S]*?)<\/Device>/g)].flatMap((device) => {
+      return [...device[3].matchAll(/<Connection[^>]+uri="([^"]+)"/g)].map((connection) => ({
+        name: decodeXml(device[1]),
+        owned: device[2] === "1",
+        uri: decodeXml(connection[1])
+      }));
+    });
+  }
 }
 
 async function jsonFetch(url: string, headers: Record<string, string>) {

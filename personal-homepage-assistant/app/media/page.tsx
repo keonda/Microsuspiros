@@ -1,6 +1,7 @@
 import { RefreshCw, Server } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PageTitle, TextInput } from "@/components/crud";
+import { PlexConnect } from "@/components/plex-connect";
 import { saveIntegrations } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { getAllMediaOverview, getConfiguredIntegrations, MediaSectionItem, MediaSummary } from "@/lib/integrations";
@@ -32,6 +33,7 @@ export default async function MediaPage({ searchParams }: { searchParams: Promis
           <Server size={18} />
           <h2 className="text-xl font-bold">Integration Settings</h2>
         </div>
+        <PlexConnect />
         <IntegrationFields kind="plex" title="Plex" urlLabel="Plex server URL" secretLabel="Plex token" configured={config("plex")} />
         <IntegrationFields kind="sonarr" title="Sonarr" urlLabel="Sonarr URL" secretLabel="Sonarr API key" configured={config("sonarr")} />
         <IntegrationFields kind="radarr" title="Radarr" urlLabel="Radarr URL" secretLabel="Radarr API key" configured={config("radarr")} />
