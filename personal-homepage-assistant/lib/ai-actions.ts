@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requestMovie, requestSeries } from "@/lib/integrations";
 import { defaultTimeZone, zonedDateAtHour, zonedDateForMonthDay } from "@/lib/timezone";
 
 export const actionNames = [
@@ -14,13 +15,15 @@ export const actionNames = [
   "update_task",
   "update_project",
   "pin_item",
-  "archive_item"
+  "archive_item",
+  "request_series",
+  "request_movie"
 ] as const;
 
 export const aiActionSchema = z.object({
   intent: z.enum(["none", "action", "follow_up"]),
   action: z.enum(actionNames).nullable().optional(),
-  itemType: z.enum(["site", "project", "note", "task", "calendar_event", "quick_link", "youtube_channel"]).nullable().optional(),
+  itemType: z.enum(["site", "project", "note", "task", "calendar_event", "quick_link", "youtube_channel", "media_request"]).nullable().optional(),
   title: z.string().nullable().optional(),
   fields: z.record(z.unknown()).default({}),
   missing: z.array(z.string()).default([]),
@@ -127,6 +130,11 @@ const archiveFields = z.object({
   name: z.string().trim().min(1)
 });
 
+const mediaRequestFields = z.object({
+  title: z.string().trim().min(1),
+  mediaType: z.enum(["anime", "tv", "movie"])
+});
+
 export function previewText(action: ParsedAiAction) {
   const fields = Object.entries(action.fields ?? {})
     .filter(([, value]) => value !== null && value !== undefined && value !== "")
@@ -170,6 +178,7 @@ export async function getAssistantActionSettings() {
 export async function isActionAllowed(action: string, itemType?: string | null) {
   const settings = await getAssistantActionSettings();
   if (action.startsWith("create_") && !settings.create) return false;
+  if ((action === "request_series" || action === "request_movie") && !settings.create) return false;
   if (action.startsWith("update_") && !settings.update) return false;
   if ((action === "archive_item" || action === "pin_item") && !settings.archive) return false;
   if ((itemType === "calendar_event" || action === "create_calendar_event") && !settings.calendar) return false;
@@ -181,6 +190,20 @@ export function parseLocalAssistantAction(message: string, timeZone = defaultTim
   const text = message.trim();
   const lower = text.toLowerCase();
   const dueDate = inferDueDate(text, timeZone);
+
+  if (/\b(request|add|grab|download|monitor)\b/i.test(text) && /\b(anime|show|series|tv|movie|film)\b/i.test(text)) {
+    const mediaType = lower.includes("movie") || lower.includes("film") ? "movie" : lower.includes("anime") ? "anime" : "tv";
+    const title = cleanupTitle(text.replace(/\b(request|add|grab|download|monitor)\b/gi, "").replace(/\b(anime|show|series|tv|movie|film)\b/gi, ""));
+    if (!title) return followUp("What title should I request?", ["title"]);
+    return aiActionSchema.parse({
+      intent: "action",
+      action: mediaType === "movie" ? "request_movie" : "request_series",
+      itemType: "media_request",
+      title,
+      fields: { title, mediaType },
+      missing: []
+    });
+  }
 
   if (/^(add|create|make)\s+(a\s+)?task\b/i.test(text)) {
     const rawTitle = cleanupTitle(text.replace(/^(add|create|make)\s+(a\s+)?task\s*(to|for|called|named)?\s*/i, ""));
@@ -559,6 +582,14 @@ export async function applyPendingAiAction(id: string) {
     await updateStatus(data.itemType, item.id, "archived");
     await log(data.itemType, data.name, "archived by assistant");
     message = `Archived "${data.name}".`;
+  } else if (pending.action === "request_series") {
+    const data = mediaRequestFields.parse({ title: pending.title, ...fields });
+    message = await requestSeries(data.title, data.mediaType === "anime");
+    await log("MediaRequest", data.title, "requested in Sonarr");
+  } else if (pending.action === "request_movie") {
+    const data = mediaRequestFields.parse({ title: pending.title, ...fields });
+    message = await requestMovie(data.title);
+    await log("MediaRequest", data.title, "requested in Radarr");
   } else {
     throw new Error("Unsupported action.");
   }

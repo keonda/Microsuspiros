@@ -146,7 +146,7 @@ async function parseAssistantAction({
           content: [
             "You convert user messages into JSON for a private dashboard app.",
             "Return only JSON matching this shape:",
-            '{"intent":"none|action|follow_up","action":"create_site|create_project|create_note|create_task|create_calendar_event|create_quick_link|create_youtube_channel|update_task|update_project|pin_item|archive_item|null","itemType":"site|project|note|task|calendar_event|quick_link|youtube_channel|null","title":"string|null","fields":{},"missing":[],"followUp":"string|null"}',
+            '{"intent":"none|action|follow_up","action":"create_site|create_project|create_note|create_task|create_calendar_event|create_quick_link|create_youtube_channel|update_task|update_project|pin_item|archive_item|request_series|request_movie|null","itemType":"site|project|note|task|calendar_event|quick_link|youtube_channel|media_request|null","title":"string|null","fields":{},"missing":[],"followUp":"string|null"}',
             "Use intent none for ordinary questions or requests that do not imply a database change.",
             "Use follow_up only when a required field is missing. Keep followUp short.",
             "Never claim the action was saved. This parser only prepares a pending action.",
@@ -154,6 +154,8 @@ async function parseAssistantAction({
             "For relative dates, infer an ISO datetime from today's ISO date. If too ambiguous, ask follow_up.",
             "For update_task, include title plus fields to change. For update_project, include name plus fields to change.",
             "For pin_item/archive_item, include fields.itemType and fields.name.",
+            "For requests to add/download/monitor a TV show or anime, use request_series with itemType media_request and fields.mediaType anime or tv.",
+            "For requests to add/download/monitor a movie, use request_movie with itemType media_request and fields.mediaType movie.",
             `Today is ${today}. The user's configured timezone is ${timeZone}.`
           ].join(" ")
         },

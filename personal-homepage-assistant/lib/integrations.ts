@@ -225,6 +225,61 @@ export async function testIntegration(kind: IntegrationKind) {
   return { ok: summary.status === "online", summary };
 }
 
+export async function requestSeries(title: string, anime = false) {
+  const integration = await getIntegration("sonarr");
+  if (!integration?.enabled) throw new Error("Sonarr is not enabled.");
+  const apiKey = getCredential(integration);
+  const headers = { "X-Api-Key": apiKey, "Content-Type": "application/json" };
+  const [lookup, roots, profiles, languageProfiles] = await Promise.all([
+    jsonFetch(`${integration.baseUrl}/api/v3/series/lookup?term=${encodeURIComponent(title)}`, headers),
+    jsonFetch(`${integration.baseUrl}/api/v3/rootfolder`, headers),
+    jsonFetch(`${integration.baseUrl}/api/v3/qualityprofile`, headers),
+    jsonFetchOptional(`${integration.baseUrl}/api/v3/languageprofile`, headers)
+  ]);
+  const series = Array.isArray(lookup) ? lookup[0] : null;
+  const root = Array.isArray(roots) ? roots[0] : null;
+  const profile = chooseProfile(profiles, anime ? "anime" : null);
+  const languageProfile = Array.isArray(languageProfiles) ? languageProfiles[0] : null;
+  if (!series || !root || !profile) throw new Error("Sonarr lookup failed or root folder/quality profile is missing.");
+  const payload: Record<string, unknown> = {
+    ...series,
+    qualityProfileId: profile.id,
+    rootFolderPath: root.path,
+    monitored: true,
+    seasons: (series.seasons ?? []).map((season: any) => ({ ...season, monitored: true })),
+    addOptions: { searchForMissingEpisodes: true }
+  };
+  if (languageProfile?.id) payload.languageProfileId = languageProfile.id;
+  const added = await postJson(`${integration.baseUrl}/api/v3/series`, headers, payload);
+  await getOverview("sonarr", true);
+  return `Requested "${added.title ?? series.title}" in Sonarr.`;
+}
+
+export async function requestMovie(title: string) {
+  const integration = await getIntegration("radarr");
+  if (!integration?.enabled) throw new Error("Radarr is not enabled.");
+  const apiKey = getCredential(integration);
+  const headers = { "X-Api-Key": apiKey, "Content-Type": "application/json" };
+  const [lookup, roots, profiles] = await Promise.all([
+    jsonFetch(`${integration.baseUrl}/api/v3/movie/lookup?term=${encodeURIComponent(title)}`, headers),
+    jsonFetch(`${integration.baseUrl}/api/v3/rootfolder`, headers),
+    jsonFetch(`${integration.baseUrl}/api/v3/qualityprofile`, headers)
+  ]);
+  const movie = Array.isArray(lookup) ? lookup[0] : null;
+  const root = Array.isArray(roots) ? roots[0] : null;
+  const profile = chooseProfile(profiles, null);
+  if (!movie || !root || !profile) throw new Error("Radarr lookup failed or root folder/quality profile is missing.");
+  const added = await postJson(`${integration.baseUrl}/api/v3/movie`, headers, {
+    ...movie,
+    qualityProfileId: profile.id,
+    rootFolderPath: root.path,
+    monitored: true,
+    addOptions: { searchForMovie: true }
+  });
+  await getOverview("radarr", true);
+  return `Requested "${added.title ?? movie.title}" in Radarr.`;
+}
+
 export async function createPlexPin() {
   const response = await fetch("https://plex.tv/api/v2/pins", {
     method: "POST",
@@ -375,6 +430,35 @@ async function jsonFetch(url: string, headers: Record<string, string>) {
   const response = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
   if (!response.ok) throw new Error(`Server returned ${response.status}.`);
   return response.json();
+}
+
+async function jsonFetchOptional(url: string, headers: Record<string, string>) {
+  try {
+    return await jsonFetch(url, headers);
+  } catch {
+    return null;
+  }
+}
+
+async function postJson(url: string, headers: Record<string, string>, body: unknown) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    cache: "no-store",
+    signal: AbortSignal.timeout(requestTimeoutMs)
+  });
+  if (!response.ok) throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+  return response.json();
+}
+
+function chooseProfile(profiles: any, preferred: string | null) {
+  const items = Array.isArray(profiles) ? profiles : [];
+  if (preferred) {
+    const match = items.find((item: any) => String(item.name ?? "").toLowerCase().includes(preferred));
+    if (match) return match;
+  }
+  return items[0] ?? null;
 }
 
 function summarizeForAi(summary: MediaSummary) {
