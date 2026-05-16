@@ -15,6 +15,15 @@ fi
 
 echo "Starting Shift Companion..."
 if [ -f ".next/standalone/server.js" ]; then
+  mkdir -p .next/standalone/.next
+  if [ -d ".next/static" ]; then
+    rm -rf .next/standalone/.next/static
+    cp -R .next/static .next/standalone/.next/static
+  fi
+  if [ -d "public" ]; then
+    rm -rf .next/standalone/public
+    cp -R public .next/standalone/public
+  fi
   exec node .next/standalone/server.js
 fi
 
