@@ -7,6 +7,7 @@ import type {
   ExpirationBatch,
   FloorRun,
   InventoryItem,
+  ItemCategory,
   NavKey,
   Reminder,
   ReportedItem,
@@ -772,13 +773,19 @@ function ChecklistEditor({
 function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void }) {
   const [filter, setFilter] = useState("all");
   const [scanText, setScanText] = useState("");
+  const [newCategory, setNewCategory] = useState<ItemCategory>("other");
+  const [newLocation, setNewLocation] = useState("Breakroom");
   const [photoName, setPhotoName] = useState("");
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const items = state.items.filter((item) => filter === "all" || item.category === filter || item.status === filter);
   const candidates = duplicateCandidates(scanText, state.items);
+  const activeFloors = state.settings.activeShift === "AM" ? state.settings.amFloors : state.settings.pmFloors;
+  const locationOptions = ["Breakroom", ...activeFloors, "Main storage"].filter((value, index, all) => value && all.indexOf(value) === index);
+  const categoryOptions: ItemCategory[] = ["other", "dairy", "drinks", "snacks", "coffee", "paper goods", "cleaning"];
 
   function patchItem(id: string, patch: Partial<InventoryItem>) {
     onUpdate((draft) => ({
@@ -812,6 +819,8 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
 
   function resetScan() {
     setScanText("");
+    setNewCategory("other");
+    setNewLocation("Breakroom");
     setPhotoName("");
     setPhotoPreviewUrl("");
     setUploadedImageUrl("");
@@ -819,6 +828,19 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   }
 
   const addBlockedByPhoto = uploadingImage || (Boolean(photoName) && !uploadedImageUrl && !uploadError);
+
+  function deleteItem(item: InventoryItem) {
+    if (deleteConfirmId !== item.id) {
+      setDeleteConfirmId(item.id);
+      return;
+    }
+
+    onUpdate((draft) => ({
+      ...draft,
+      items: draft.items.filter((entry) => entry.id !== item.id),
+    }), "inventory-delete");
+    setDeleteConfirmId("");
+  }
 
   return (
     <div className="grid gap-4">
@@ -864,6 +886,40 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           placeholder={photoName ? "OCR placeholder: type detected label text" : "Upload photo, then enter detected text"}
           className="mt-2 w-full rounded-lg border border-black/10 px-3 py-3"
         />
+        <div className="mt-3 grid gap-2">
+          <label className="text-xs font-black uppercase text-ink/50">Where is it?</label>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {locationOptions.map((location) => (
+              <PillButton
+                key={location}
+                onClick={() => setNewLocation(location)}
+                className={newLocation === location ? "bg-leaf text-white" : "bg-skycap text-ink"}
+              >
+                {location}
+              </PillButton>
+            ))}
+          </div>
+          <input
+            value={newLocation}
+            onChange={(event) => setNewLocation(event.target.value)}
+            placeholder="Breakroom"
+            className="w-full rounded-lg border border-black/10 px-3 py-3"
+          />
+        </div>
+        <div className="mt-3 grid gap-2">
+          <label className="text-xs font-black uppercase text-ink/50">Category optional</label>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {categoryOptions.map((category) => (
+              <PillButton
+                key={category}
+                onClick={() => setNewCategory(category)}
+                className={newCategory === category ? "bg-leaf text-white" : "bg-white text-ink ring-1 ring-black/10"}
+              >
+                {category}
+              </PillButton>
+            ))}
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <PillButton
             onClick={() => {
@@ -871,9 +927,9 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
               const item: InventoryItem = {
                 id: crypto.randomUUID(),
                 name: scanText.trim(),
-                category: "other",
+                category: newCategory,
                 unit: "each",
-                location: "Main storage",
+                location: newLocation.trim() || "Breakroom",
                 status: "stocked",
                 quantityNeeded: 0,
                 rotating: true,
@@ -950,6 +1006,13 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
                 className="col-span-2 bg-ink text-white"
               >
                 Reported
+              </PillButton>
+              <PillButton
+                onClick={() => deleteItem(item)}
+                onBlur={() => setDeleteConfirmId((id) => (id === item.id ? "" : id))}
+                className={`col-span-2 ${deleteConfirmId === item.id ? "bg-tomato text-white" : "bg-white text-tomato ring-1 ring-tomato/30"}`}
+              >
+                <Trash2 size={16} className="inline" /> {deleteConfirmId === item.id ? "Tap again to delete" : "Delete item"}
               </PillButton>
             </div>
           </Card>
