@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
   if (singleUserModeEnabled()) {
     const expectedEmail = cleanEnvValue(process.env.SINGLE_USER_EMAIL ?? "attendant@example.com").toLowerCase();
-    const expectedPassword = cleanEnvValue(process.env.SINGLE_USER_PASSWORD ?? "shiftcompanion");
+    const expectedPassword = singleUserPassword();
     if (submittedEmail === expectedEmail && submittedPassword === expectedPassword) {
       return Response.json({ ok: true, mode: "single-user", email: expectedEmail });
     }
@@ -24,6 +24,18 @@ export async function POST(request: Request) {
 
 function singleUserModeEnabled() {
   return cleanEnvValue(process.env.SINGLE_USER_MODE ?? "true").toLowerCase() !== "false";
+}
+
+function singleUserPassword() {
+  const encodedPassword = cleanEnvValue(process.env.SINGLE_USER_PASSWORD_B64);
+  if (encodedPassword) {
+    try {
+      return Buffer.from(encodedPassword, "base64").toString("utf8");
+    } catch {
+      return "";
+    }
+  }
+  return cleanEnvValue(process.env.SINGLE_USER_PASSWORD ?? "shiftcompanion");
 }
 
 function cleanEnvValue(value: unknown) {

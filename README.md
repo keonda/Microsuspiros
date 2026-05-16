@@ -48,6 +48,7 @@ NEXTAUTH_SECRET=change-me
 SINGLE_USER_MODE=true
 SINGLE_USER_EMAIL=attendant@example.com
 SINGLE_USER_PASSWORD=shiftcompanion
+SINGLE_USER_PASSWORD_B64=
 NEXT_PUBLIC_APP_NAME="Shift Companion"
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
@@ -63,6 +64,7 @@ Use the included Dockerfile or Docker Compose service.
 - Set `DATABASE_URL` to your Coolify PostgreSQL internal connection string
 - Keep `SINGLE_USER_MODE=true` for a one-person install
 - Set `SINGLE_USER_EMAIL` and `SINGLE_USER_PASSWORD` without wrapping quote characters in the Coolify UI
+- If your password contains `$`, `%`, quotes, or shell-sensitive characters, set `SINGLE_USER_PASSWORD_B64` instead and leave `SINGLE_USER_PASSWORD` blank
 - Set `AUTH_SECRET` / `NEXTAUTH_SECRET` to a long random value
 - Run `npm run db:seed` once after first deploy if you want sample data
 
