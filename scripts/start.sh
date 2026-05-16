@@ -1,7 +1,7 @@
 #!/bin/sh
 set -u
 
-export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+export HOSTNAME="0.0.0.0"
 export PORT="${PORT:-3000}"
 
 echo "Preparing database schema..."
