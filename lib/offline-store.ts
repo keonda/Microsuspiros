@@ -25,9 +25,10 @@ export class OfflineStore {
     return raw ? JSON.parse(raw) : null;
   }
 
-  async save(state: ShiftState, action: string) {
+  async save(state: ShiftState, action: string, options: { enqueue?: boolean } = {}) {
     localStorage.setItem(this.localKey, JSON.stringify(state));
     await this.writeState(state);
+    if (options.enqueue === false) return;
     await this.enqueue({ id: crypto.randomUUID(), action, createdAt: new Date().toISOString(), payload: state });
   }
 

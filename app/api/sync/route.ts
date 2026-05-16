@@ -31,11 +31,22 @@ export async function POST(request: Request) {
     if (!lastEvent?.payload) return Response.json({ ok: true, applied: 0 });
 
     const payload = lastEvent.payload;
+    const incomingUpdatedAt = Date.parse(payload.updatedAt ?? "");
     const user = await db.user.upsert({
       where: { email: singleUserEmail() },
       update: {},
       create: { email: singleUserEmail(), name: "Shift attendant" },
     });
+
+    const existingSetting = await db.appSetting.findUnique({
+      where: { userId_key: { userId: user.id, key: "offlineSnapshot" } },
+    });
+    const existingSnapshot = existingSetting?.value as { updatedAt?: string } | null | undefined;
+    const existingUpdatedAt = Date.parse(existingSnapshot?.updatedAt ?? "");
+
+    if (Number.isFinite(existingUpdatedAt) && Number.isFinite(incomingUpdatedAt) && incomingUpdatedAt < existingUpdatedAt) {
+      return Response.json({ ok: true, applied: 0, ignored: events.length, snapshot: existingSetting.value });
+    }
 
     await db.shift.upsert({
       where: { id: payload.id },

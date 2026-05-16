@@ -112,7 +112,7 @@ export default function ShiftCompanion() {
       if (pullData.snapshot) {
         const remoteState = normalizeState(pullData.snapshot);
         setState(remoteState);
-        await store.save(remoteState, "sync-pull");
+        await store.save(remoteState, "sync-pull", { enqueue: false });
         await store.clearPending((await store.pending()).map((event) => event.id));
       }
       setSync("Synced");
