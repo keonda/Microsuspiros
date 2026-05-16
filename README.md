@@ -50,6 +50,7 @@ SINGLE_USER_EMAIL=attendant@example.com
 SINGLE_USER_PASSWORD=shiftcompanion
 SINGLE_USER_PASSWORD_B64=
 NEXT_PUBLIC_APP_NAME="Shift Companion"
+UPLOAD_DIR=/app/data/uploads
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 ```
@@ -66,6 +67,7 @@ Use the included Dockerfile or Docker Compose service.
 - Set `SINGLE_USER_EMAIL` and `SINGLE_USER_PASSWORD` without wrapping quote characters in the Coolify UI
 - If your password contains `$`, `%`, quotes, or shell-sensitive characters, set `SINGLE_USER_PASSWORD_B64` instead and leave `SINGLE_USER_PASSWORD` blank
 - Set `AUTH_SECRET` / `NEXTAUTH_SECRET` to a long random value
+- Add Coolify persistent storage mounted at `/app/data/uploads` and set `UPLOAD_DIR=/app/data/uploads` so Scan Label photos survive redeploys
 - Run `npm run db:seed` once after first deploy if you want sample data
 
 ## Offline and Sync
@@ -74,7 +76,7 @@ The app writes every action locally first. It stores the full shift state in Ind
 
 ## OCR / Scan Label
 
-The MVP includes camera/image upload and a text field standing in for OCR output. Duplicate detection suggests close existing item names. The provider abstraction in `lib/ai-suggestions.ts` is ready for Google Vision, Gemini, OpenAI, or another OCR service.
+The MVP includes camera/image upload to `UPLOAD_DIR` and a text field standing in for OCR output. Duplicate detection suggests close existing item names. The provider abstraction in `lib/ai-suggestions.ts` is ready for Google Vision, Gemini, OpenAI, or another OCR service.
 
 ## Phase 2 TODOs
 

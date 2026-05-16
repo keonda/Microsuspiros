@@ -3,8 +3,10 @@ set -u
 
 export HOSTNAME="0.0.0.0"
 export PORT="${PORT:-3000}"
+export UPLOAD_DIR="${UPLOAD_DIR:-/app/data/uploads}"
 
 echo "Preparing database schema..."
+mkdir -p "$UPLOAD_DIR"
 if ! npx prisma migrate deploy; then
   echo "Migration deploy failed; attempting init migration recovery..."
   npx prisma migrate resolve --rolled-back 20260516000000_init || true

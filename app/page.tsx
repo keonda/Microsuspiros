@@ -773,6 +773,9 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   const [filter, setFilter] = useState("all");
   const [scanText, setScanText] = useState("");
   const [photoName, setPhotoName] = useState("");
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
   const items = state.items.filter((item) => filter === "all" || item.category === filter || item.status === filter);
   const candidates = duplicateCandidates(scanText, state.items);
 
@@ -781,6 +784,34 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
       ...draft,
       items: draft.items.map((item) => (item.id === id ? { ...item, ...patch, lastSeenAt: new Date().toISOString() } : item)),
     }), "inventory-update");
+  }
+
+  async function uploadScanPhoto(file?: File) {
+    setUploadError("");
+    setUploadedImageUrl("");
+    setPhotoName(file?.name ?? "");
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/uploads", { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Photo upload failed.");
+      setUploadedImageUrl(result.url);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Photo upload failed.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function resetScan() {
+    setScanText("");
+    setPhotoName("");
+    setUploadedImageUrl("");
+    setUploadError("");
   }
 
   return (
@@ -805,9 +836,16 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
+          onChange={(event) => uploadScanPhoto(event.target.files?.[0])}
           className="mt-3 w-full rounded-lg bg-mist p-3 text-sm font-bold"
         />
+        {uploadedImageUrl && (
+          <img src={uploadedImageUrl} alt="Uploaded label" className="mt-3 h-32 w-full rounded-lg object-cover" />
+        )}
+        <p className="mt-2 text-xs font-bold text-ink/55">
+          {uploadingImage ? "Saving photo..." : uploadedImageUrl ? `Photo saved: ${photoName}` : "Photos save to persistent storage when Coolify mounts /app/data/uploads."}
+        </p>
+        {uploadError && <p className="mt-2 text-sm font-black text-tomato">{uploadError}</p>}
         <input
           value={scanText}
           onChange={(event) => setScanText(event.target.value)}
@@ -828,18 +866,19 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
                 quantityNeeded: 0,
                 rotating: true,
                 active: true,
+                imageUrl: uploadedImageUrl || undefined,
                 notes: "Added from Scan Label MVP placeholder.",
                 rotationStartDate: new Date().toISOString(),
                 lastSeenAt: new Date().toISOString(),
               };
               onUpdate((draft) => ({ ...draft, items: [item, ...draft.items] }), "scan-add-item");
-              setScanText("");
+              resetScan();
             }}
             className="bg-leaf text-white"
           >
             Add as new item
           </PillButton>
-          <PillButton onClick={() => setScanText("")} className="bg-skycap text-ink">Try again</PillButton>
+          <PillButton onClick={resetScan} className="bg-skycap text-ink">Try again</PillButton>
         </div>
         {candidates.length > 0 && <p className="mt-2 text-sm font-bold text-ink/65">Possible match: {candidates[0].name}</p>}
       </Card>
@@ -852,7 +891,10 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
                 <h3 className="text-lg font-black">{item.name}</h3>
                 <p className="text-sm font-bold text-ink/60">{item.status} • {item.location} • {item.unit}</p>
               </div>
-              {item.rotating && <span className="rounded-full bg-lime px-2 py-1 text-xs font-black">Rotating</span>}
+              <div className="flex shrink-0 items-center gap-2">
+                {item.imageUrl && <img src={item.imageUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}
+                {item.rotating && <span className="rounded-full bg-lime px-2 py-1 text-xs font-black">Rotating</span>}
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-[44px_1fr_44px] items-center gap-2">
               <PillButton onClick={() => patchItem(item.id, { quantityNeeded: Math.max(0, item.quantityNeeded - 1) })} className="bg-mist text-ink">-</PillButton>
