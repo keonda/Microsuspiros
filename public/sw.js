@@ -1,5 +1,5 @@
-const CACHE = "shift-companion-v1";
-const ASSETS = ["/", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "shift-companion-v2";
+const ASSETS = ["/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
@@ -18,9 +18,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
+  const url = new URL(request.url);
+
+  if (url.pathname.startsWith("/_next/") || url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")));
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put("/", copy));
+          return response;
+        })
+        .catch(() => caches.match("/")),
+    );
     return;
   }
 
