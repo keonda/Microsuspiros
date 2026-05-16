@@ -178,6 +178,9 @@ export interface ShiftState {
   settings: {
     smartShiftEnabled: boolean;
     singleUserMode: boolean;
+    attendantName: string;
+    buildingName: string;
+    attendantEmail?: string;
     shiftStartTime: string;
     shiftEndTime: string;
     activeShift: "AM" | "PM";

@@ -45,6 +45,9 @@ export function createDefaultState(): ShiftState {
     settings: {
       smartShiftEnabled: true,
       singleUserMode: true,
+      attendantName: "",
+      buildingName: "Breakroom",
+      attendantEmail: "",
       shiftStartTime: "07:00",
       shiftEndTime: "12:00",
       activeShift: "AM",

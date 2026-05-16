@@ -47,6 +47,7 @@ const {
   PackageCheck,
   Plus,
   ScanLine,
+  Settings,
   ShoppingBasket,
   Timer,
   Trash2,
@@ -250,6 +251,9 @@ function normalizeState(saved: ShiftState): ShiftState {
     settings: {
       ...defaults.settings,
       ...(saved.settings ?? {}),
+      attendantName: saved.settings?.attendantName ?? defaults.settings.attendantName,
+      buildingName: saved.settings?.buildingName ?? defaults.settings.buildingName,
+      attendantEmail: saved.settings?.attendantEmail ?? defaults.settings.attendantEmail,
       amFloors: saved.settings?.amFloors ?? defaults.settings.amFloors,
       pmFloors: saved.settings?.pmFloors ?? defaults.settings.pmFloors,
     },
@@ -387,6 +391,10 @@ function TodayView({
   const likelyNeeds = useMemo(() => predictShortagesWithRules(state, new Date()), [state]);
   const suggestions = useMemo(() => [...suggestRemindersWithRules(state, new Date()), ...suggestChecklistWithRules(state, new Date())].slice(0, 3), [state]);
   const wasteWatch = useMemo(() => detectWasteHeavyItems(state), [state]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const shiftStartHour = Number(state.settings.shiftStartTime.split(":")[0] ?? 7);
+  const hoursFromStart = new Date().getHours() - shiftStartHour;
+  const checklistStartsOpen = hoursFromStart >= 0 && hoursFromStart < 2 && readiness < 95;
   const needNow = [
     ...missing.map((item) => `${item.name} — ${item.quantityNeeded || 1} ${item.unit}`),
     ...low.map((item) => `${item.name} — running low`),
@@ -397,15 +405,26 @@ function TodayView({
   return (
     <div className="grid gap-4">
       <Card className="bg-leaf text-white">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-bold opacity-80">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</p>
-            <h2 className="mt-1 text-4xl font-black">Breakroom ready: {readiness}%</h2>
-            <p className="mt-2 text-lg font-bold">{getReadinessLabel(readiness)}</p>
+            <p className="text-xs font-black uppercase opacity-80">{state.settings.buildingName || "Breakroom"} • {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</p>
+            <h2 className="mt-1 text-2xl font-black">Ready: {readiness}%</h2>
+            <p className="text-sm font-bold opacity-90">{getReadinessLabel(readiness)}{state.settings.attendantName ? ` • ${state.settings.attendantName}` : ""}</p>
           </div>
-          <Coffee className="shrink-0" size={36} />
+          <div className="flex items-center gap-2">
+            <Coffee className="shrink-0" size={30} />
+            <button
+              aria-label="Shift settings"
+              onClick={() => setSettingsOpen(true)}
+              className="tap grid h-11 w-11 place-items-center rounded-lg bg-white/15 text-white ring-1 ring-white/30"
+            >
+              <Settings size={22} />
+            </button>
+          </div>
         </div>
       </Card>
+
+      {settingsOpen && <ShiftSettingsPanel state={state} onUpdate={onUpdate} onClose={() => setSettingsOpen(false)} />}
 
       {state.settings.smartShiftEnabled && prompt && (
         <Card className="border-2 border-honey">
@@ -436,8 +455,7 @@ function TodayView({
         </Card>
       )}
 
-      <ChecklistEditor state={state} onUpdate={onUpdate} compact />
-      <ShiftSetupCard state={state} onUpdate={onUpdate} />
+      <ChecklistEditor state={state} onUpdate={onUpdate} compact startExpanded={checklistStartsOpen} />
 
       <Card>
         <h3 className="text-lg font-black">Likely needs today</h3>
@@ -520,12 +538,14 @@ function SummaryCard({ title, count, items }: { title: string; count: number; it
   );
 }
 
-function ShiftSetupCard({
+function ShiftSettingsPanel({
   state,
   onUpdate,
+  onClose,
 }: {
   state: ShiftState;
   onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void;
+  onClose: () => void;
 }) {
   const settings = state.settings;
   const floorKey = settings.activeShift === "AM" ? "amFloors" : "pmFloors";
@@ -548,23 +568,54 @@ function ShiftSetupCard({
   }
 
   return (
-    <Card>
+    <Card className="border-2 border-leaf/20">
       <div className="flex items-center justify-between gap-2">
         <div>
+          <p className="text-xs font-black uppercase text-leaf">Settings</p>
           <h3 className="text-lg font-black">Shift setup</h3>
           <p className="text-sm font-bold text-ink/60">{settings.activeShift} floors: {floors.join(", ") || "None set"}</p>
         </div>
-        <div className="grid grid-cols-2 rounded-lg bg-mist p-1">
-          {(["AM", "PM"] as const).map((shift) => (
-            <button
-              key={shift}
-              onClick={() => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, activeShift: shift } }), "shift-mode")}
-              className={`tap rounded-md px-3 py-2 text-sm font-black ${settings.activeShift === shift ? "bg-leaf text-white" : "text-ink/65"}`}
-            >
-              {shift}
-            </button>
-          ))}
-        </div>
+        <PillButton onClick={onClose} className="bg-skycap text-ink">Done</PillButton>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <label className="grid gap-1 text-sm font-black">
+          Attendant
+          <input
+            value={settings.attendantName}
+            onChange={(event) => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, attendantName: event.target.value } }), "settings-attendant")}
+            placeholder="Your name"
+            className="rounded-lg border border-black/10 px-3 py-3 font-normal"
+          />
+        </label>
+        <label className="grid gap-1 text-sm font-black">
+          Location / building
+          <input
+            value={settings.buildingName}
+            onChange={(event) => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, buildingName: event.target.value } }), "settings-building")}
+            placeholder="Breakroom A"
+            className="rounded-lg border border-black/10 px-3 py-3 font-normal"
+          />
+        </label>
+      </div>
+      <label className="mt-2 grid gap-1 text-sm font-black">
+        Email later
+        <input
+          value={settings.attendantEmail ?? ""}
+          onChange={(event) => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, attendantEmail: event.target.value } }), "settings-email")}
+          placeholder="Future login email"
+          className="rounded-lg border border-black/10 px-3 py-3 font-normal"
+        />
+      </label>
+      <div className="mt-3 grid grid-cols-2 rounded-lg bg-mist p-1">
+        {(["AM", "PM"] as const).map((shift) => (
+          <button
+            key={shift}
+            onClick={() => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, activeShift: shift } }), "shift-mode")}
+            className={`tap rounded-md px-3 py-2 text-sm font-black ${settings.activeShift === shift ? "bg-leaf text-white" : "text-ink/65"}`}
+          >
+            {shift}
+          </button>
+        ))}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="grid gap-1 text-sm font-black">
@@ -757,21 +808,40 @@ function ChecklistEditor({
   state,
   onUpdate,
   compact = false,
+  startExpanded = true,
 }: {
   state: ShiftState;
   compact?: boolean;
+  startExpanded?: boolean;
   onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded);
   const [name, setName] = useState("");
   const [weight, setWeight] = useState(5);
+
+  useEffect(() => {
+    setExpanded(startExpanded);
+  }, [startExpanded]);
 
   return (
     <Card>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-lg font-black">Opening checklist</h3>
-        <PillButton onClick={() => setEditing(!editing)} className="bg-skycap text-ink">{editing ? "Done" : "Edit"}</PillButton>
+        <button onClick={() => setExpanded(!expanded)} className="tap text-left">
+          <h3 className="text-lg font-black">Opening checklist</h3>
+          <p className="text-xs font-bold text-ink/55">{expanded ? "Tap to collapse" : "Tap to expand"} • {getReadiness(state.checklist)}% complete</p>
+        </button>
+        <div className="flex gap-2">
+          <PillButton onClick={() => setExpanded(!expanded)} className="bg-white text-ink ring-1 ring-black/10">{expanded ? "Hide" : "Show"}</PillButton>
+          {expanded && <PillButton onClick={() => setEditing(!editing)} className="bg-skycap text-ink">{editing ? "Done" : "Edit"}</PillButton>}
+        </div>
       </div>
+      {!expanded && (
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-mist">
+          <div className="h-full rounded-full bg-leaf" style={{ width: `${getReadiness(state.checklist)}%` }} />
+        </div>
+      )}
+      {expanded && (
       <div className="mt-3 grid gap-2">
         {state.checklist.map((item) => (
           <div key={item.id} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg bg-mist p-2">
@@ -809,6 +879,7 @@ function ChecklistEditor({
           </div>
         ))}
       </div>
+      )}
       {editing && (
         <div className="mt-3 grid grid-cols-[1fr_76px_auto] gap-2">
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="New task" className="rounded-lg border border-black/10 px-3 py-2" />
