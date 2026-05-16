@@ -71,12 +71,8 @@ export default function ShiftCompanion() {
     });
     navigator.serviceWorker?.register("/sw.js").catch(() => undefined);
     const tick = window.setInterval(() => setNow(new Date()), 60_000);
-    const syncTick = window.setInterval(() => syncNow(), 20_000);
-    window.addEventListener("online", syncNow);
     return () => {
       window.clearInterval(tick);
-      window.clearInterval(syncTick);
-      window.removeEventListener("online", syncNow);
     };
   }, []);
 
@@ -85,7 +81,6 @@ export default function ShiftCompanion() {
       const next = mutator({ ...current, updatedAt: new Date().toISOString() });
       store.save(next, action).then(() => {
         setSync(navigator.onLine ? "Sync pending" : "Saved locally");
-        if (navigator.onLine) syncNow();
       });
       return next;
     });
@@ -476,7 +471,7 @@ function ShiftSetupCard({
 
   useEffect(() => {
     setFloorDraft(floors.join(", "));
-  }, [floorKey, floors]);
+  }, [floorKey]);
 
   function saveFloors() {
     const nextFloors = floorDraft
@@ -533,16 +528,18 @@ function ShiftSetupCard({
         <input
           value={floorDraft}
           onChange={(event) => setFloorDraft(event.target.value)}
-          onBlur={saveFloors}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
-              event.currentTarget.blur();
+              saveFloors();
             }
           }}
           placeholder="Floor 3, Floor 6"
           className="rounded-lg border border-black/10 px-3 py-3 font-normal"
         />
       </label>
+      <PillButton onClick={saveFloors} className="mt-3 w-full bg-leaf text-white">
+        Save floors
+      </PillButton>
     </Card>
   );
 }
