@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { mergeNeedNow } from "@/lib/sync-merge";
+import type { ShiftState } from "@/types/shift";
 
 function singleUserEmail() {
   return String(process.env.SINGLE_USER_EMAIL ?? "attendant@example.com").trim().replace(/^["']|["']$/g, "").toLowerCase();
@@ -54,13 +56,18 @@ export async function POST(request: Request) {
       create: { id: payload.id, userId: user.id, date: new Date(payload.shiftDate), notes: "Synced from offline client" },
     });
 
+    const existingFullSnapshot = existingSetting?.value as ShiftState | null | undefined;
+    const nextSnapshot = existingFullSnapshot
+      ? { ...payload, needNow: mergeNeedNow(payload.needNow ?? [], existingFullSnapshot.needNow ?? []) }
+      : payload;
+
     await db.appSetting.upsert({
       where: { userId_key: { userId: user.id, key: "offlineSnapshot" } },
-      update: { value: payload },
-      create: { userId: user.id, key: "offlineSnapshot", value: payload },
+      update: { value: nextSnapshot },
+      create: { userId: user.id, key: "offlineSnapshot", value: nextSnapshot },
     });
 
-    return Response.json({ ok: true, applied: events.length, snapshot: payload });
+    return Response.json({ ok: true, applied: events.length, snapshot: nextSnapshot });
   } catch (error) {
     console.error("Sync push failed", error);
     return Response.json({ ok: false, error: "Sync push failed" }, { status: 500 });

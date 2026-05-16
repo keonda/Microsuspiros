@@ -26,6 +26,7 @@ import {
   smartPromptFor,
 } from "@/lib/shift-logic";
 import { OfflineStore, SyncStatus } from "@/lib/offline-store";
+import { mergeShiftSnapshots } from "@/lib/sync-merge";
 import {
   applySuggestion,
   cleanOcrWithRules,
@@ -125,7 +126,7 @@ export default function ShiftCompanion() {
       if (!pullResponse.ok) throw new Error("Sync pull failed");
       const pullData = await pullResponse.json();
       if (pullData.snapshot) {
-        const remoteState = normalizeState(pullData.snapshot);
+        const remoteState = mergeShiftSnapshots(state, normalizeState(pullData.snapshot));
         setState(remoteState);
         await store.save(remoteState, "sync-pull", { enqueue: false });
         await store.clearPending((await store.pending()).map((event) => event.id));
