@@ -62,6 +62,7 @@ Use the included Dockerfile or Docker Compose service.
 - Expose port: `3000`
 - Set `DATABASE_URL` to your Coolify PostgreSQL internal connection string
 - Keep `SINGLE_USER_MODE=true` for a one-person install
+- Set `SINGLE_USER_EMAIL` and `SINGLE_USER_PASSWORD` without wrapping quote characters in the Coolify UI
 - Set `AUTH_SECRET` / `NEXTAUTH_SECRET` to a long random value
 - Run `npm run db:seed` once after first deploy if you want sample data
 
