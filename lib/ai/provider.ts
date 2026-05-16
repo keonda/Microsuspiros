@@ -1,7 +1,7 @@
 import type { InventoryItem, OcrCleanupResult, ShiftState, WeeklyInsightResult } from "@/types/shift";
 import { ItemNameCleanupResultSchema, WeeklyInsightResultSchema } from "@/lib/ai/contracts";
 import { cleanOcrWithRules, weeklyInsightsWithRules } from "@/lib/ai/rules";
-import { runGroqJson } from "@/lib/ai/groq";
+import { runGroqJson, runGroqVisionJson } from "@/lib/ai/groq";
 import { runGeminiJson } from "@/lib/ai/gemini";
 import { runOpenAiJson } from "@/lib/ai/openai";
 
@@ -20,16 +20,23 @@ async function runJson(feature: JsonFeature, prompt: string) {
   return null;
 }
 
-export async function cleanOcrItemName(rawText: string, items: InventoryItem[]): Promise<OcrCleanupResult> {
+export async function cleanOcrItemName(rawText: string, items: InventoryItem[], imageDataUrl?: string): Promise<OcrCleanupResult> {
   const fallback = cleanOcrWithRules(rawText, items);
   const prompt = [
-    "Return strict JSON for an inventory label cleanup.",
+    imageDataUrl ? "Read the product label in the image, then return strict JSON for inventory label cleanup." : "Return strict JSON for an inventory label cleanup.",
     "Schema fields: rawText, cleanName, confidence 0-1, category, unit, optional duplicateItemId, duplicateName.",
+    "Allowed category values: dairy, drinks, snacks, coffee, paper goods, cleaning, other.",
+    "Allowed unit values: each, case, bag, box, tray, container.",
     `Raw text: ${rawText}`,
     `Existing items: ${items.map((item) => `${item.id}:${item.name}`).join(", ")}`,
   ].join("\n");
 
   try {
+    if (imageDataUrl && aiEnabled() && process.env.AI_PROVIDER === "groq") {
+      const json = await runGroqVisionJson(prompt, imageDataUrl);
+      if (!json) return fallback;
+      return ItemNameCleanupResultSchema.parse(json);
+    }
     const json = await runJson("ocr-cleanup", prompt);
     if (!json) return fallback;
     return ItemNameCleanupResultSchema.parse(json);

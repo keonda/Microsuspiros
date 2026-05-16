@@ -88,9 +88,9 @@ The MVP includes camera/image upload to `UPLOAD_DIR` and a text field standing i
 
 Phase 2 is rules-first and works without AI. Keep `ENABLE_AI_FEATURES=false` and `AI_PROVIDER=none` to use local rules for likely needs, reminder suggestions, OCR cleanup, waste watch, checklist recommendations, and weekly summaries.
 
-To enable Groq later, set `ENABLE_AI_FEATURES=true`, `AI_PROVIDER=groq`, `GROQ_API_KEY`, and optionally `AI_MODEL`. Gemini and OpenAI use the same pattern with `AI_PROVIDER=gemini` / `GEMINI_API_KEY` or `AI_PROVIDER=openai` / `OPENAI_API_KEY`.
+To enable Groq vision OCR, set `ENABLE_AI_FEATURES=true`, `AI_PROVIDER=groq`, `GROQ_API_KEY`, and `AI_MODEL=meta-llama/llama-4-scout-17b-16e-instruct`. Gemini and OpenAI use the same pattern with `AI_PROVIDER=gemini` / `GEMINI_API_KEY` or `AI_PROVIDER=openai` / `OPENAI_API_KEY`.
 
-AI is only called from manual actions such as `Clean label` or `Generate insights`; it is not called on every page load. All AI responses are validated with Zod and fall back to the rules engine if invalid.
+AI is only called from manual actions such as `Read photo`, `Clean label`, or `Generate insights`; it is not called on every page load. All AI responses are validated with Zod and fall back to the rules engine if invalid. Groq vision OCR reads photos uploaded through Shift Companion and sends them as base64 image data, so very large photos may need a closer crop or smaller upload.
 
 ## Phase 2 TODOs
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getUploadDir } from "@/lib/uploads";
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Map([
@@ -9,10 +10,6 @@ const IMAGE_EXTENSIONS = new Map([
   ["image/webp", ".webp"],
   ["image/gif", ".gif"],
 ]);
-
-function getUploadDir() {
-  return process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
-}
 
 async function ensureUploadDir(uploadDir: string) {
   try {

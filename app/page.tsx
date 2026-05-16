@@ -843,6 +843,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   const [uploadError, setUploadError] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
   const [ocrSuggestion, setOcrSuggestion] = useState<OcrCleanupResult | null>(null);
+  const [ocrError, setOcrError] = useState("");
   const [cleaningOcr, setCleaningOcr] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const items = state.items.filter((item) => filter === "all" || item.category === filter || item.status === filter);
@@ -886,6 +887,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
     setNewCategory("other");
     setNewLocation("Breakroom");
     setOcrSuggestion(null);
+    setOcrError("");
     setPhotoName("");
     setPhotoPreviewUrl("");
     setUploadedImageUrl("");
@@ -908,19 +910,26 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   }
 
   async function cleanLabel() {
-    if (!scanText.trim()) return;
+    if (!scanText.trim() && !uploadedImageUrl) return;
     setCleaningOcr(true);
+    setOcrError("");
     try {
       const response = await fetch("/api/ai/ocr-cleanup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText: scanText, items: state.items }),
+        body: JSON.stringify({ rawText: scanText, imageUrl: uploadedImageUrl, items: state.items }),
       });
-      if (!response.ok) throw new Error("Cleanup failed");
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Cleanup failed");
       setOcrSuggestion(data.result);
-    } catch {
-      setOcrSuggestion(cleanOcrWithRules(scanText, state.items));
+      if (!scanText.trim() && data.result?.rawText) setScanText(data.result.rawText);
+    } catch (error) {
+      if (scanText.trim()) {
+        setOcrSuggestion(cleanOcrWithRules(scanText, state.items));
+        setOcrError("Vision OCR failed, so I used typed text cleanup instead.");
+      } else {
+        setOcrError(error instanceof Error ? error.message : "Vision OCR failed.");
+      }
     } finally {
       setCleaningOcr(false);
     }
@@ -991,13 +1000,14 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           className="mt-2 w-full rounded-lg border border-black/10 px-3 py-3"
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <PillButton onClick={cleanLabel} disabled={!scanText.trim() || cleaningOcr} className="bg-ink text-white disabled:opacity-50">
-            {cleaningOcr ? "Cleaning..." : "Clean label"}
+          <PillButton onClick={cleanLabel} disabled={(!scanText.trim() && !uploadedImageUrl) || cleaningOcr} className="bg-ink text-white disabled:opacity-50">
+            {cleaningOcr ? "Reading..." : uploadedImageUrl ? "Read photo" : "Clean label"}
           </PillButton>
           <PillButton onClick={() => setOcrSuggestion(cleanOcrWithRules(scanText, state.items))} disabled={!scanText.trim()} className="bg-skycap text-ink disabled:opacity-50">
             Rules only
           </PillButton>
         </div>
+        {ocrError && <p className="mt-2 rounded-lg bg-tomato/10 px-3 py-2 text-sm font-black text-tomato">{ocrError}</p>}
         {ocrSuggestion && (
           <div className="mt-3 rounded-lg border border-leaf/20 bg-lime/70 p-3">
             <p className="text-xs font-black uppercase text-ink/50">Suggested</p>
