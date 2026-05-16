@@ -854,7 +854,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           {uploadingImage && `Uploading ${photoName}...`}
           {uploadedImageUrl && `Photo uploaded and attached: ${photoName}`}
           {uploadError && `Photo not attached: ${uploadError}`}
-          {!photoName && !uploadingImage && !uploadedImageUrl && !uploadError && "Choose or take a photo first. Saved photos live in /app/data/uploads on Coolify."}
+          {!photoName && !uploadingImage && !uploadedImageUrl && !uploadError && "Choose or take a photo first. Saved photos live in /app/uploads on Coolify."}
         </div>
         {uploadedImageUrl && <p className="mt-1 text-xs font-bold text-ink/50">Saved path: {uploadedImageUrl}</p>}
         {uploadError && <p className="mt-2 text-sm font-black text-tomato">{uploadError}</p>}

@@ -50,7 +50,7 @@ SINGLE_USER_EMAIL=attendant@example.com
 SINGLE_USER_PASSWORD=shiftcompanion
 SINGLE_USER_PASSWORD_B64=
 NEXT_PUBLIC_APP_NAME="Shift Companion"
-UPLOAD_DIR=/app/data/uploads
+UPLOAD_DIR=/app/uploads
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 ```
@@ -67,7 +67,7 @@ Use the included Dockerfile or Docker Compose service.
 - Set `SINGLE_USER_EMAIL` and `SINGLE_USER_PASSWORD` without wrapping quote characters in the Coolify UI
 - If your password contains `$`, `%`, quotes, or shell-sensitive characters, set `SINGLE_USER_PASSWORD_B64` instead and leave `SINGLE_USER_PASSWORD` blank
 - Set `AUTH_SECRET` / `NEXTAUTH_SECRET` to a long random value
-- Add Coolify persistent storage mounted at `/app/data/uploads` and set `UPLOAD_DIR=/app/data/uploads` so Scan Label photos survive redeploys
+- Add Coolify persistent storage as a directory/volume mounted at `/app/uploads` and set `UPLOAD_DIR=/app/uploads` so Scan Label photos survive redeploys. If `/app/data/uploads` was created as a file by mistake, remove that storage entry and use `/app/uploads`.
 - Run `npm run db:seed` once after first deploy if you want sample data
 
 ## Offline and Sync

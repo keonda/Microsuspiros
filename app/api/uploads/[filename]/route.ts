@@ -11,7 +11,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 function getUploadPath(filename: string) {
   if (process.env.UPLOAD_DIR) return path.join(/* turbopackIgnore: true */ process.env.UPLOAD_DIR, filename);
-  return path.join(process.cwd(), "data", "uploads", filename);
+  return path.join(process.cwd(), "uploads", filename);
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ filename: string }> }) {

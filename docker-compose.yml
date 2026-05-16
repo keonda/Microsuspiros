@@ -23,11 +23,11 @@ services:
       SINGLE_USER_EMAIL: attendant@example.com
       SINGLE_USER_PASSWORD: shiftcompanion
       NEXT_PUBLIC_APP_NAME: Shift Companion
-      UPLOAD_DIR: /app/data/uploads
+      UPLOAD_DIR: /app/uploads
     ports:
       - "3000:3000"
     volumes:
-      - shift_companion_uploads:/app/data/uploads
+      - shift_companion_uploads:/app/uploads
 
 volumes:
   shift_companion_db:

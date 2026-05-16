@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -11,7 +11,22 @@ const IMAGE_EXTENSIONS = new Map([
 ]);
 
 function getUploadDir() {
-  return process.env.UPLOAD_DIR || path.join(process.cwd(), "data", "uploads");
+  return process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+}
+
+async function ensureUploadDir(uploadDir: string) {
+  try {
+    const existing = await stat(uploadDir);
+    if (!existing.isDirectory()) {
+      throw new Error(`${uploadDir} exists but is not a directory. In Coolify, remove that storage entry and add a directory/volume mount instead.`);
+    }
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      await mkdir(uploadDir, { recursive: true });
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function POST(request: Request) {
@@ -31,12 +46,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Image must be smaller than 8 MB." }, { status: 413 });
   }
 
-  const uploadDir = getUploadDir();
-  await mkdir(uploadDir, { recursive: true });
+  try {
+    const uploadDir = getUploadDir();
+    await ensureUploadDir(uploadDir);
 
-  const filename = `${Date.now()}-${randomUUID()}${extension}`;
-  const bytes = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(uploadDir, filename), bytes);
+    const filename = `${Date.now()}-${randomUUID()}${extension}`;
+    const bytes = Buffer.from(await file.arrayBuffer());
+    await writeFile(path.join(uploadDir, filename), bytes);
 
-  return Response.json({ ok: true, url: `/api/uploads/${filename}` });
+    return Response.json({ ok: true, url: `/api/uploads/${filename}` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not save upload.";
+    return Response.json({ error: message }, { status: 500 });
+  }
 }

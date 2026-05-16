@@ -3,9 +3,13 @@ set -u
 
 export HOSTNAME="0.0.0.0"
 export PORT="${PORT:-3000}"
-export UPLOAD_DIR="${UPLOAD_DIR:-/app/data/uploads}"
+export UPLOAD_DIR="${UPLOAD_DIR:-/app/uploads}"
 
 echo "Preparing database schema..."
+if [ -e "$UPLOAD_DIR" ] && [ ! -d "$UPLOAD_DIR" ]; then
+  echo "UPLOAD_DIR '$UPLOAD_DIR' exists but is not a directory. Falling back to /app/uploads."
+  export UPLOAD_DIR="/app/uploads"
+fi
 mkdir -p "$UPLOAD_DIR"
 if ! npx prisma migrate deploy; then
   echo "Migration deploy failed; attempting init migration recovery..."

@@ -15,9 +15,9 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV UPLOAD_DIR=/app/data/uploads
+ENV UPLOAD_DIR=/app/uploads
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-RUN mkdir -p /app/data/uploads && chown -R nextjs:nodejs /app/data
+RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
@@ -29,5 +29,5 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-VOLUME ["/app/data/uploads"]
+VOLUME ["/app/uploads"]
 CMD ["sh", "./scripts/start.sh"]
