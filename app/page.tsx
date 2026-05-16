@@ -353,7 +353,8 @@ function Nav({ active, setActive }: { active: NavKey; setActive: (key: NavKey) =
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-lg bg-white p-4 shadow-soft ${className}`}>{children}</section>;
+  const hasCustomBackground = /\bbg-/.test(className);
+  return <section className={`rounded-lg ${hasCustomBackground ? "" : "bg-white"} p-4 shadow-soft ${className}`}>{children}</section>;
 }
 
 function PillButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
