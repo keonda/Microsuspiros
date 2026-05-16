@@ -99,19 +99,26 @@ export default function ShiftCompanion() {
     setSyncing(true);
     const pending = await store.pending();
     try {
-      if (!pending.length) {
-        setSync("Synced");
-        setLastSyncedAt(new Date().toISOString());
-        return;
+      setSync(pending.length ? "Sync pending" : "Synced");
+      if (pending.length) {
+        const pushResponse = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ events: pending }),
+        });
+        if (!pushResponse.ok) throw new Error("Sync push failed");
+        await store.clearPending(pending.map((event) => event.id));
       }
-      setSync("Sync pending");
-      const response = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ events: pending }),
-      });
-      if (!response.ok) throw new Error("Sync failed");
-      await store.clearPending(pending.map((event) => event.id));
+
+      const pullResponse = await fetch("/api/sync", { method: "GET" });
+      if (!pullResponse.ok) throw new Error("Sync pull failed");
+      const pullData = await pullResponse.json();
+      if (pullData.snapshot) {
+        const remoteState = normalizeState(pullData.snapshot);
+        setState(remoteState);
+        await store.save(remoteState, "sync-pull");
+        await store.clearPending((await store.pending()).map((event) => event.id));
+      }
       setSync("Synced");
       setLastSyncedAt(new Date().toISOString());
     } catch {
