@@ -773,6 +773,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   const [filter, setFilter] = useState("all");
   const [scanText, setScanText] = useState("");
   const [photoName, setPhotoName] = useState("");
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -789,15 +790,17 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   async function uploadScanPhoto(file?: File) {
     setUploadError("");
     setUploadedImageUrl("");
+    setPhotoPreviewUrl("");
     setPhotoName(file?.name ?? "");
     if (!file) return;
 
+    setPhotoPreviewUrl(URL.createObjectURL(file));
     setUploadingImage(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const response = await fetch("/api/uploads", { method: "POST", body: formData });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Photo upload failed.");
       setUploadedImageUrl(result.url);
     } catch (error) {
@@ -810,9 +813,12 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   function resetScan() {
     setScanText("");
     setPhotoName("");
+    setPhotoPreviewUrl("");
     setUploadedImageUrl("");
     setUploadError("");
   }
+
+  const addBlockedByPhoto = uploadingImage || (Boolean(photoName) && !uploadedImageUrl && !uploadError);
 
   return (
     <div className="grid gap-4">
@@ -839,12 +845,18 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           onChange={(event) => uploadScanPhoto(event.target.files?.[0])}
           className="mt-3 w-full rounded-lg bg-mist p-3 text-sm font-bold"
         />
-        {uploadedImageUrl && (
-          <img src={uploadedImageUrl} alt="Uploaded label" className="mt-3 h-32 w-full rounded-lg object-cover" />
+        {(photoPreviewUrl || uploadedImageUrl) && (
+          <img src={uploadedImageUrl || photoPreviewUrl} alt="Selected label" className="mt-3 h-36 w-full rounded-lg object-cover" />
         )}
-        <p className="mt-2 text-xs font-bold text-ink/55">
-          {uploadingImage ? "Saving photo..." : uploadedImageUrl ? `Photo saved: ${photoName}` : "Photos save to persistent storage when Coolify mounts /app/data/uploads."}
-        </p>
+        <div className={`mt-2 rounded-lg px-3 py-2 text-sm font-black ${
+          uploadError ? "bg-tomato/10 text-tomato" : uploadedImageUrl ? "bg-lime text-ink" : uploadingImage ? "bg-honey text-ink" : "bg-mist text-ink/60"
+        }`}>
+          {uploadingImage && `Uploading ${photoName}...`}
+          {uploadedImageUrl && `Photo uploaded and attached: ${photoName}`}
+          {uploadError && `Photo not attached: ${uploadError}`}
+          {!photoName && !uploadingImage && !uploadedImageUrl && !uploadError && "Choose or take a photo first. Saved photos live in /app/data/uploads on Coolify."}
+        </div>
+        {uploadedImageUrl && <p className="mt-1 text-xs font-bold text-ink/50">Saved path: {uploadedImageUrl}</p>}
         {uploadError && <p className="mt-2 text-sm font-black text-tomato">{uploadError}</p>}
         <input
           value={scanText}
@@ -855,7 +867,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
         <div className="mt-2 flex flex-wrap gap-2">
           <PillButton
             onClick={() => {
-              if (!scanText.trim()) return;
+              if (!scanText.trim() || addBlockedByPhoto) return;
               const item: InventoryItem = {
                 id: crypto.randomUUID(),
                 name: scanText.trim(),
@@ -874,9 +886,10 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
               onUpdate((draft) => ({ ...draft, items: [item, ...draft.items] }), "scan-add-item");
               resetScan();
             }}
-            className="bg-leaf text-white"
+            disabled={addBlockedByPhoto}
+            className={`${addBlockedByPhoto ? "bg-ink/30 text-white" : "bg-leaf text-white"}`}
           >
-            Add as new item
+            {uploadingImage ? "Uploading photo..." : addBlockedByPhoto ? "Waiting for photo" : uploadedImageUrl ? "Add item with photo" : "Add as new item"}
           </PillButton>
           <PillButton onClick={resetScan} className="bg-skycap text-ink">Try again</PillButton>
         </div>
