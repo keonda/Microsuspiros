@@ -33,6 +33,7 @@ const {
   PackageCheck,
   Plus,
   ScanLine,
+  ShoppingBasket,
   Timer,
   Trash2,
   TriangleAlert,
@@ -40,6 +41,7 @@ const {
 
 const nav: Array<{ key: NavKey; label: string; icon: React.ComponentType<{ size?: number }> }> = [
   { key: "today", label: "Today", icon: Home },
+  { key: "needNow", label: "Need Now", icon: ShoppingBasket },
   { key: "inventory", label: "Inventory", icon: PackageCheck },
   { key: "panic", label: "Panic", icon: TriangleAlert },
   { key: "reminders", label: "Reminders", icon: Bell },
@@ -63,7 +65,7 @@ export default function ShiftCompanion() {
     setSessionEmail(localStorage.getItem("shift-companion-session"));
     setAuthChecked(true);
     store.load().then((saved) => {
-      if (saved) setState(saved);
+      if (saved) setState(normalizeState(saved));
     });
     navigator.serviceWorker?.register("/sw.js").catch(() => undefined);
     const tick = window.setInterval(() => setNow(new Date()), 60_000);
@@ -168,6 +170,7 @@ export default function ShiftCompanion() {
               openPanic={() => setActive("panic")}
             />
           )}
+          {active === "needNow" && <NeedNowView state={state} onUpdate={update} />}
           {active === "inventory" && <InventoryView state={state} onUpdate={update} />}
           {active === "panic" && <PanicView state={state} onUpdate={update} onCopy={copy} />}
           {active === "reminders" && <RemindersView state={state} onUpdate={update} />}
@@ -178,18 +181,18 @@ export default function ShiftCompanion() {
       </section>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-white md:hidden">
-        <div className="grid grid-cols-7">
+        <div className="flex overflow-x-auto px-1">
           {nav.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.key}
                 onClick={() => setActive(item.key)}
-                className={`tap flex flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] font-bold ${
+                className={`tap flex min-w-[74px] flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-bold ${
                   active === item.key ? "text-leaf" : "text-ink/55"
                 }`}
               >
-                <Icon size={20} />
+                <Icon size={28} />
                 <span>{item.label}</span>
               </button>
             );
@@ -198,6 +201,21 @@ export default function ShiftCompanion() {
       </nav>
     </main>
   );
+}
+
+function normalizeState(saved: ShiftState): ShiftState {
+  const defaults = createDefaultState();
+  return {
+    ...defaults,
+    ...saved,
+    needNow: saved.needNow ?? [],
+    settings: {
+      ...defaults.settings,
+      ...(saved.settings ?? {}),
+      amFloors: saved.settings?.amFloors ?? defaults.settings.amFloors,
+      pmFloors: saved.settings?.pmFloors ?? defaults.settings.pmFloors,
+    },
+  };
 }
 
 function LoginView({ onLogin }: { onLogin: (email: string) => void }) {
@@ -280,11 +298,11 @@ function Nav({ active, setActive }: { active: NavKey; setActive: (key: NavKey) =
           <button
             key={item.key}
             onClick={() => setActive(item.key)}
-            className={`tap flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-bold ${
+            className={`tap flex items-center gap-3 rounded-lg px-3 py-4 text-left text-sm font-bold ${
               active === item.key ? "bg-leaf text-white" : "bg-white text-ink shadow-soft"
             }`}
           >
-            <Icon size={18} /> {item.label}
+            <Icon size={22} /> {item.label}
           </button>
         );
       })}
@@ -328,6 +346,12 @@ function TodayView({
   const low = state.items.filter((item) => item.status === "running low");
   const pending = state.reports.filter((report) => report.status === "pending" || report.followUpNeeded);
   const watch = state.expirations.filter((batch) => batch.status !== "okay");
+  const needNow = [
+    ...missing.map((item) => `${item.name} — ${item.quantityNeeded || 1} ${item.unit}`),
+    ...low.map((item) => `${item.name} — running low`),
+    ...state.urgent.map((item) => `${item.name} — urgent`),
+    ...state.needNow.filter((item) => !item.done).map((item) => `${item.name} — ${item.location}`),
+  ];
 
   return (
     <div className="grid gap-4">
@@ -369,8 +393,10 @@ function TodayView({
       )}
 
       <ChecklistEditor state={state} onUpdate={onUpdate} compact />
+      <ShiftSetupCard state={state} onUpdate={onUpdate} />
 
       <div className="grid gap-3 md:grid-cols-2">
+        <SummaryCard title="Need now" count={needNow.length} items={needNow} />
         <SummaryCard title="Missing" count={missing.length} items={missing.map((item) => `${item.name} — ${item.quantityNeeded} ${item.unit}`)} />
         <SummaryCard title="Running low" count={low.length} items={low.map((item) => item.name)} />
         <SummaryCard title="Reported pending" count={pending.length} items={pending.map((item) => `${item.itemName} — ${item.status}`)} />
@@ -409,6 +435,190 @@ function SummaryCard({ title, count, items }: { title: string; count: number; it
         ))}
       </ul>
     </Card>
+  );
+}
+
+function ShiftSetupCard({
+  state,
+  onUpdate,
+}: {
+  state: ShiftState;
+  onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void;
+}) {
+  const settings = state.settings;
+  const floorKey = settings.activeShift === "AM" ? "amFloors" : "pmFloors";
+  const floors = settings[floorKey];
+
+  function updateFloors(value: string) {
+    const nextFloors = value.split(",").map((floor) => floor.trim()).filter(Boolean);
+    onUpdate((draft) => ({
+      ...draft,
+      settings: { ...draft.settings, [floorKey]: nextFloors },
+    }), "shift-floor-settings");
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-lg font-black">Shift setup</h3>
+          <p className="text-sm font-bold text-ink/60">{settings.activeShift} floors: {floors.join(", ") || "None set"}</p>
+        </div>
+        <div className="grid grid-cols-2 rounded-lg bg-mist p-1">
+          {(["AM", "PM"] as const).map((shift) => (
+            <button
+              key={shift}
+              onClick={() => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, activeShift: shift } }), "shift-mode")}
+              className={`tap rounded-md px-3 py-2 text-sm font-black ${settings.activeShift === shift ? "bg-leaf text-white" : "text-ink/65"}`}
+            >
+              {shift}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <label className="grid gap-1 text-sm font-black">
+          Start
+          <input
+            value={settings.shiftStartTime}
+            onChange={(event) => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, shiftStartTime: event.target.value } }), "shift-start")}
+            type="time"
+            className="rounded-lg border border-black/10 px-3 py-3 font-normal"
+          />
+        </label>
+        <label className="grid gap-1 text-sm font-black">
+          End
+          <input
+            value={settings.shiftEndTime}
+            onChange={(event) => onUpdate((draft) => ({ ...draft, settings: { ...draft.settings, shiftEndTime: event.target.value } }), "shift-end")}
+            type="time"
+            className="rounded-lg border border-black/10 px-3 py-3 font-normal"
+          />
+        </label>
+      </div>
+      <label className="mt-3 grid gap-1 text-sm font-black">
+        {settings.activeShift} floors
+        <input
+          value={floors.join(", ")}
+          onChange={(event) => updateFloors(event.target.value)}
+          placeholder="Floor 3, Floor 6"
+          className="rounded-lg border border-black/10 px-3 py-3 font-normal"
+        />
+      </label>
+    </Card>
+  );
+}
+
+function NeedNowView({
+  state,
+  onUpdate,
+}: {
+  state: ShiftState;
+  onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void;
+}) {
+  const activeFloors = state.settings.activeShift === "AM" ? state.settings.amFloors : state.settings.pmFloors;
+  const [name, setName] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [location, setLocation] = useState(activeFloors[0] ?? "Breakroom A");
+  const needs = [
+    ...state.items
+      .filter((item) => item.status === "missing" || item.status === "running low" || item.status === "reported")
+      .map((item) => ({
+        id: `inventory-${item.id}`,
+        itemId: item.id,
+        name: item.name,
+        quantity: item.quantityNeeded || 1,
+        unit: item.unit,
+        location: item.location,
+        source: "inventory" as const,
+      })),
+    ...state.urgent.map((item) => ({
+      id: `panic-${item.id}`,
+      name: item.name,
+      quantity: item.quantity,
+      unit: "",
+      location: item.location,
+      source: "panic" as const,
+    })),
+    ...state.needNow.filter((item) => !item.done),
+  ];
+
+  function clearNeed(need: (typeof needs)[number]) {
+    onUpdate((draft) => {
+      if (need.source === "inventory" && "itemId" in need) {
+        return {
+          ...draft,
+          items: draft.items.map((item) => (item.id === need.itemId ? { ...item, status: "restocked", quantityNeeded: 0 } : item)),
+        };
+      }
+      if (need.source === "panic") {
+        return { ...draft, urgent: draft.urgent.filter((item) => `panic-${item.id}` !== need.id) };
+      }
+      return { ...draft, needNow: draft.needNow.map((item) => (item.id === need.id ? { ...item, done: true } : item)) };
+    }, "need-now-clear");
+  }
+
+  return (
+    <div className="grid gap-4">
+      <Card className="bg-leaf text-white">
+        <h2 className="text-3xl font-black">Need Now</h2>
+        <p className="mt-1 font-bold opacity-90">Today’s active needs, separate from the inventory catalog.</p>
+      </Card>
+      <Card>
+        <h3 className="text-lg font-black">Add need for today</h3>
+        <div className="mt-3 grid gap-2">
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Item needed" className="rounded-lg border border-black/10 px-3 py-3" />
+          <div className="grid grid-cols-[88px_1fr] gap-2">
+            <input value={quantity} onChange={(event) => setQuantity(Number(event.target.value) || 1)} type="number" min={1} className="rounded-lg border border-black/10 px-3 py-3" />
+            <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Location/floor" className="rounded-lg border border-black/10 px-3 py-3" />
+          </div>
+          {activeFloors.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {activeFloors.map((floor) => (
+                <PillButton key={floor} onClick={() => setLocation(floor)} className={location === floor ? "bg-leaf text-white" : "bg-skycap text-ink"}>
+                  {floor}
+                </PillButton>
+              ))}
+            </div>
+          )}
+          <PillButton
+            onClick={() => {
+              if (!name.trim()) return;
+              onUpdate((draft) => ({
+                ...draft,
+                needNow: [
+                  { id: crypto.randomUUID(), name: name.trim(), quantity, unit: "each", location, source: "manual", done: false, createdAt: new Date().toISOString() },
+                  ...draft.needNow,
+                ],
+              }), "need-now-add");
+              setName("");
+              setQuantity(1);
+            }}
+            className="bg-ink text-white"
+          >
+            Add to Need Now
+          </PillButton>
+        </div>
+      </Card>
+      <div className="grid gap-3">
+        {needs.length ? needs.map((need) => (
+          <Card key={need.id}>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+              <div>
+                <h3 className="text-lg font-black">{need.name}</h3>
+                <p className="text-sm font-bold text-ink/60">{need.quantity} {need.unit} • {need.location} • {need.source}</p>
+              </div>
+              <PillButton onClick={() => clearNeed(need)} className="bg-leaf text-white">Done</PillButton>
+            </div>
+          </Card>
+        )) : (
+          <Card>
+            <h3 className="font-black">Nothing needed right now</h3>
+            <p className="mt-1 text-sm font-bold text-ink/60">Items marked missing, running low, reported, urgent, or manually added will show here.</p>
+          </Card>
+        )}
+      </div>
+    </div>
   );
 }
 

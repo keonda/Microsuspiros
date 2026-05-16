@@ -27,6 +27,7 @@ export function createDefaultState(): ShiftState {
       item("Cups", "paper goods", "case", "Breakroom A", 1),
       item("Napkins", "paper goods", "case", "Breakroom A", 1),
     ],
+    needNow: [],
     urgent: [],
     reminders: [
       { id: "rem-coffee-6", title: "Check coffee on 6th floor", location: "Floor 6", time: "08:30", repeat: "weekdays", style: "both", doneToday: false },
@@ -39,7 +40,15 @@ export function createDefaultState(): ShiftState {
     floorRuns: [],
     smartPromptSkips: [],
     xp: 0,
-    settings: { smartShiftEnabled: true, singleUserMode: true },
+    settings: {
+      smartShiftEnabled: true,
+      singleUserMode: true,
+      shiftStartTime: "07:00",
+      shiftEndTime: "12:00",
+      activeShift: "AM",
+      amFloors: ["Floor 3", "Floor 6"],
+      pmFloors: ["Floor 3", "Floor 6", "Floor 8"],
+    },
   };
 }
 

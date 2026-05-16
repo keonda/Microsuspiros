@@ -1,4 +1,4 @@
-export type NavKey = "today" | "inventory" | "panic" | "reminders" | "reports" | "waste" | "stats";
+export type NavKey = "today" | "needNow" | "inventory" | "panic" | "reminders" | "reports" | "waste" | "stats";
 
 export type ItemCategory = "dairy" | "drinks" | "snacks" | "coffee" | "paper goods" | "cleaning" | "other";
 export type Unit = "each" | "case" | "bag" | "box" | "tray" | "container";
@@ -34,6 +34,17 @@ export interface UrgentItem {
   name: string;
   quantity: number;
   location: string;
+}
+
+export interface NeedNowItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  location: string;
+  source: "manual" | "inventory" | "panic";
+  done: boolean;
+  createdAt: string;
 }
 
 export interface Reminder {
@@ -93,6 +104,7 @@ export interface ShiftState {
   updatedAt: string;
   checklist: ChecklistItem[];
   items: InventoryItem[];
+  needNow: NeedNowItem[];
   urgent: UrgentItem[];
   reminders: Reminder[];
   reports: ReportedItem[];
@@ -104,5 +116,10 @@ export interface ShiftState {
   settings: {
     smartShiftEnabled: boolean;
     singleUserMode: boolean;
+    shiftStartTime: string;
+    shiftEndTime: string;
+    activeShift: "AM" | "PM";
+    amFloors: string[];
+    pmFloors: string[];
   };
 }
