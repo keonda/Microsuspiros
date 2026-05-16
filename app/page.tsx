@@ -51,6 +51,8 @@ const nav: Array<{ key: NavKey; label: string; icon: React.ComponentType<{ size?
 const store = new OfflineStore("shift-companion-state");
 
 export default function ShiftCompanion() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [active, setActive] = useState<NavKey>("today");
   const [state, setState] = useState<ShiftState>(() => createDefaultState());
   const [sync, setSync] = useState<SyncStatus>("Saved locally");
@@ -58,6 +60,8 @@ export default function ShiftCompanion() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
+    setSessionEmail(localStorage.getItem("shift-companion-session"));
+    setAuthChecked(true);
     store.load().then((saved) => {
       if (saved) setState(saved);
     });
@@ -117,6 +121,14 @@ export default function ShiftCompanion() {
   const readiness = getReadiness(state.checklist);
   const prompt = smartPromptFor(state, now);
 
+  if (!authChecked) {
+    return <main className="min-h-screen bg-mist" />;
+  }
+
+  if (!sessionEmail) {
+    return <LoginView onLogin={setSessionEmail} />;
+  }
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col pb-24 md:pb-4">
       <header className="sticky top-0 z-20 border-b border-black/5 bg-mist/95 px-4 py-3 backdrop-blur md:static">
@@ -125,7 +137,18 @@ export default function ShiftCompanion() {
             <p className="text-xs font-bold uppercase tracking-wide text-leaf">Shift Companion</p>
             <h1 className="text-2xl font-black text-ink">Breakroom shift</h1>
           </div>
-          <div className="rounded-full bg-white px-3 py-2 text-xs font-bold shadow-soft">{sync}</div>
+          <div className="flex items-center gap-2">
+            <div className="rounded-full bg-white px-3 py-2 text-xs font-bold shadow-soft">{sync}</div>
+            <button
+              onClick={() => {
+                localStorage.removeItem("shift-companion-session");
+                setSessionEmail(null);
+              }}
+              className="tap rounded-full bg-white px-3 py-2 text-xs font-black text-ink/70 shadow-soft"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -173,6 +196,77 @@ export default function ShiftCompanion() {
           })}
         </div>
       </nav>
+    </main>
+  );
+}
+
+function LoginView({ onLogin }: { onLogin: (email: string) => void }) {
+  const [email, setEmail] = useState("attendant@example.com");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!response.ok) throw new Error("Login failed");
+      localStorage.setItem("shift-companion-session", email);
+      onLogin(email);
+    } catch {
+      setError("Email or password did not match.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="mx-auto grid min-h-screen w-full max-w-md content-center gap-4 p-4">
+      <section className="rounded-lg bg-white p-5 shadow-soft">
+        <div className="flex items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-lg bg-leaf text-white">
+            <Coffee size={26} />
+          </div>
+          <div>
+            <p className="text-xs font-black uppercase text-leaf">Shift Companion</p>
+            <h1 className="text-2xl font-black">Sign in</h1>
+          </div>
+        </div>
+        <form onSubmit={submit} className="mt-5 grid gap-3">
+          <label className="grid gap-1 text-sm font-black">
+            Email
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              autoComplete="email"
+              className="rounded-lg border border-black/10 px-3 py-3 text-base font-normal"
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-black">
+            Password
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              autoComplete="current-password"
+              className="rounded-lg border border-black/10 px-3 py-3 text-base font-normal"
+              required
+            />
+          </label>
+          {error && <p className="rounded-lg bg-tomato/10 px-3 py-2 text-sm font-bold text-tomato">{error}</p>}
+          <PillButton disabled={loading} className="bg-leaf py-3 text-white disabled:opacity-60">
+            {loading ? "Signing in" : "Sign in"}
+          </PillButton>
+        </form>
+      </section>
     </main>
   );
 }
