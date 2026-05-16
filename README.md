@@ -53,6 +53,12 @@ NEXT_PUBLIC_APP_NAME="Shift Companion"
 UPLOAD_DIR=/app/uploads
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
+AI_PROVIDER=none
+GROQ_API_KEY=
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+AI_MODEL=
+ENABLE_AI_FEATURES=false
 ```
 
 ## Coolify Notes
@@ -76,7 +82,15 @@ The app writes every action locally first. It stores the full shift state in Ind
 
 ## OCR / Scan Label
 
-The MVP includes camera/image upload to `UPLOAD_DIR` and a text field standing in for OCR output. Duplicate detection suggests close existing item names. The provider abstraction in `lib/ai-suggestions.ts` is ready for Google Vision, Gemini, OpenAI, or another OCR service.
+The MVP includes camera/image upload to `UPLOAD_DIR` and a text field standing in for OCR output. Duplicate detection suggests close existing item names. The provider abstraction in `lib/ai/provider.ts` is ready for Groq, Gemini, OpenAI, or local rules.
+
+## Phase 2 AI and Insights
+
+Phase 2 is rules-first and works without AI. Keep `ENABLE_AI_FEATURES=false` and `AI_PROVIDER=none` to use local rules for likely needs, reminder suggestions, OCR cleanup, waste watch, checklist recommendations, and weekly summaries.
+
+To enable Groq later, set `ENABLE_AI_FEATURES=true`, `AI_PROVIDER=groq`, `GROQ_API_KEY`, and optionally `AI_MODEL`. Gemini and OpenAI use the same pattern with `AI_PROVIDER=gemini` / `GEMINI_API_KEY` or `AI_PROVIDER=openai` / `OPENAI_API_KEY`.
+
+AI is only called from manual actions such as `Clean label` or `Generate insights`; it is not called on every page load. All AI responses are validated with Zod and fall back to the rules engine if invalid.
 
 ## Phase 2 TODOs
 

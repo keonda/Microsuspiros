@@ -95,6 +95,11 @@ model User {
   reports      ReportedItem[]
   badges       UserBadge[]
   settings     AppSetting[]
+  insights     Insight[]
+  suggestions  Suggestion[]
+  dismissals   SuggestionDismissal[]
+  predictions  Prediction[]
+  aiEvents     AiEventLog[]
 }
 
 model Shift {
@@ -272,4 +277,77 @@ model AppSetting {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
+}
+
+model Insight {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  summary   String
+  data      Json
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model Suggestion {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String
+  entityId    String?
+  message     String
+  status      String    @default("active")
+  actionLabel String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([status])
+}
+
+model SuggestionDismissal {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String
+  entityId    String?
+  message     String
+  dismissedAt DateTime  @default(now())
+  snoozeUntil DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model Prediction {
+  id           String   @id @default(cuid())
+  userId       String
+  itemName     String
+  location     String?
+  message      String
+  quantityHint String?
+  reason       String
+  confidence   Float
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, itemName])
+}
+
+model AiEventLog {
+  id               String   @id @default(cuid())
+  userId           String?
+  provider         String
+  feature          String
+  promptTokens     Int?
+  completionTokens Int?
+  status           String
+  error            String?
+  createdAt        DateTime @default(now())
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([provider, feature])
+  @@index([status])
 }

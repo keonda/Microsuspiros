@@ -35,6 +35,7 @@ async function main() {
     ["Coffee", "COFFEE", "BAG", floor6.id],
     ["Cups", "PAPER_GOODS", "CASE", breakroom.id],
     ["Napkins", "PAPER_GOODS", "CASE", breakroom.id],
+    ["Oxxo snacks", "SNACKS", "BOX", storage.id],
   ] as const;
 
   for (const [name, category, unit, defaultLocationId] of items) {
@@ -89,10 +90,85 @@ async function main() {
       create: { name, description: `${name} badge` },
     });
   }
+
+  const milk = await db.item.findUniqueOrThrow({ where: { id: "whole-milk" } });
+  const coffee = await db.item.findUniqueOrThrow({ where: { id: "coffee" } });
+  const cookies = await db.item.findUniqueOrThrow({ where: { id: "chocolate-chip-cookies" } });
+  const oxxo = await db.item.findUniqueOrThrow({ where: { id: "oxxo-snacks" } });
+  const yogurt = await db.item.findUniqueOrThrow({ where: { id: "plain-yogurt" } });
+  const mondayDates = previousMondays(3);
+
+  for (const date of mondayDates) {
+    const shift = await db.shift.upsert({
+      where: { id: `seed-shift-${date.toISOString().slice(0, 10)}` },
+      update: {},
+      create: { id: `seed-shift-${date.toISOString().slice(0, 10)}`, userId: user.id, date, notes: "Seeded Phase 2 pattern data" },
+    });
+    await db.inventoryEntry.create({
+      data: { shiftId: shift.id, itemId: milk.id, status: "MISSING", quantityNeeded: 2, createdAt: setTime(date, 8, 20) },
+    });
+    await db.inventoryEntry.create({
+      data: { shiftId: shift.id, itemId: coffee.id, status: "RESTOCKED", quantityNeeded: 1, createdAt: setTime(date, 8, 30) },
+    });
+    await db.floorRun.create({
+      data: { shiftId: shift.id, location: "Floor 6", checklist: ["coffee", "cups", "snacks"], startedAt: setTime(date, 8, 25), minutes: 12 + mondayDates.indexOf(date) },
+    });
+  }
+
+  await db.reportedItem.create({
+    data: {
+      userId: user.id,
+      itemId: cookies.id,
+      itemName: "Chocolate chip cookies",
+      reportedAt: new Date(Date.now() - 3 * 86_400_000),
+      reportedTo: "Team chat",
+      method: "CHAT",
+      status: "PENDING",
+      followUpNeeded: true,
+    },
+  });
+
+  for (let index = 0; index < 3; index += 1) {
+    await db.wasteObservation.create({
+      data: {
+        itemId: oxxo.id,
+        itemName: "Oxxo snacks",
+        date: new Date(Date.now() - index * 86_400_000),
+        rating: "HIGH",
+        packagingCount: "5 boxes",
+        trashType: "CARDBOARD",
+        notes: "5 boxes filled one small container and lasted about one day.",
+      },
+    });
+  }
+
+  await db.expirationBatch.create({
+    data: { itemId: yogurt.id, itemName: "Plain yogurt", quantity: 10, location: "Breakroom A", estimate: "this week", status: "USE_SOON", notes: "Seeded yogurt expiration risk" },
+  });
 }
 
 function slug(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function previousMondays(count: number) {
+  const dates: Date[] = [];
+  const today = new Date();
+  const diff = (today.getDay() + 6) % 7;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - diff);
+  for (let index = 0; index < count; index += 1) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() - index * 7);
+    dates.push(date);
+  }
+  return dates;
+}
+
+function setTime(date: Date, hour: number, minute: number) {
+  const next = new Date(date);
+  next.setHours(hour, minute, 0, 0);
+  return next;
 }
 
 main()

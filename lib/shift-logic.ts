@@ -39,6 +39,8 @@ export function createDefaultState(): ShiftState {
     waste: [],
     floorRuns: [],
     smartPromptSkips: [],
+    suggestionDismissals: [],
+    predictions: [],
     xp: 0,
     settings: {
       smartShiftEnabled: true,
@@ -93,6 +95,68 @@ export function smartPromptFor(state: ShiftState, now: Date) {
   const skipped = new Set(state.smartPromptSkips);
   const coffee = state.checklist.find((item) => item.id === "brew-coffee");
   const floorCoffee = state.checklist.find((item) => item.id === "floor-6-coffee");
+  const oldPending = state.reports.find((report) => report.status === "pending" && daysSince(report.reportedAt, now) >= 2);
+  const checkToday = state.expirations.find((item) => item.status === "check today" || item.status === "expired");
+
+  if (state.reminders.some((reminder) => !reminder.doneToday && reminder.time <= timeNow(now))) {
+    const reminder = state.reminders.find((entry) => !entry.doneToday && entry.time <= timeNow(now));
+    if (reminder && !skipped.has(`reminder-${reminder.id}`)) {
+      return {
+        id: `reminder-${reminder.id}`,
+        text: reminder.title,
+        actions: [
+          { label: "Done", kind: "reminder-done", reminderId: reminder.id },
+          { label: "Later", kind: "later" },
+          { label: "Skip", kind: "skip" },
+        ],
+      };
+    }
+  }
+
+  if (getReadiness(state.checklist) < 80 && !skipped.has("readiness-under-80")) {
+    return {
+      id: "readiness-under-80",
+      text: "Opening checklist is still under 80%. Knock out one more quick check?",
+      actions: [
+        { label: "Open checklist", kind: "later" },
+        { label: "Skip", kind: "skip" },
+      ],
+    };
+  }
+
+  if (checkToday && !skipped.has(`expiration-${checkToday.id}`)) {
+    return {
+      id: `expiration-${checkToday.id}`,
+      text: `${checkToday.itemName} needs an expiration check today.`,
+      actions: [
+        { label: "Done", kind: "later" },
+        { label: "Skip", kind: "skip" },
+      ],
+    };
+  }
+
+  if (oldPending && !skipped.has(`pending-${oldPending.id}`)) {
+    return {
+      id: `pending-${oldPending.id}`,
+      text: `${oldPending.itemName} has been pending for ${daysSince(oldPending.reportedAt, now)} days.`,
+      actions: [
+        { label: "Follow up", kind: "later" },
+        { label: "Skip", kind: "skip" },
+      ],
+    };
+  }
+
+  const likelyNeed = state.items.find((item) => item.status === "missing" || item.status === "running low");
+  if (likelyNeed && !skipped.has(`likely-${likelyNeed.id}`)) {
+    return {
+      id: `likely-${likelyNeed.id}`,
+      text: `${likelyNeed.name} is ${likelyNeed.status}${likelyNeed.location ? ` at ${likelyNeed.location}` : ""}.`,
+      actions: [
+        { label: "Add need", kind: "later" },
+        { label: "Skip", kind: "skip" },
+      ],
+    };
+  }
 
   if (hour >= 5 && hour < 8 && coffee && !coffee.done && !skipped.has("brew-coffee")) {
     return {
@@ -133,6 +197,14 @@ export function smartPromptFor(state: ShiftState, now: Date) {
   }
 
   return null;
+}
+
+function timeNow(now: Date) {
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function daysSince(value: string, now: Date) {
+  return Math.floor((now.getTime() - new Date(value).getTime()) / 86_400_000);
 }
 
 export function makeSummary(state: ShiftState, kind: "normal" | "urgent" | "missing" | "low" | "end") {

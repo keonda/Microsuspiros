@@ -9,9 +9,12 @@ import type {
   InventoryItem,
   ItemCategory,
   NavKey,
+  OcrCleanupResult,
   Reminder,
   ReportedItem,
   ShiftState,
+  Suggestion,
+  Unit,
   WasteObservation,
 } from "@/types/shift";
 import {
@@ -23,6 +26,15 @@ import {
   smartPromptFor,
 } from "@/lib/shift-logic";
 import { OfflineStore, SyncStatus } from "@/lib/offline-store";
+import {
+  applySuggestion,
+  cleanOcrWithRules,
+  detectWasteHeavyItems,
+  predictShortagesWithRules,
+  suggestChecklistWithRules,
+  suggestRemindersWithRules,
+  weeklyInsightsWithRules,
+} from "@/lib/ai/rules";
 
 const {
   Bell,
@@ -31,6 +43,7 @@ const {
   Copy,
   Home,
   LineChart,
+  Lightbulb,
   PackageCheck,
   Plus,
   ScanLine,
@@ -48,6 +61,7 @@ const nav: Array<{ key: NavKey; label: string; icon: React.ComponentType<{ size?
   { key: "reminders", label: "Reminders", icon: Bell },
   { key: "reports", label: "Reports", icon: ClipboardCheck },
   { key: "waste", label: "Waste", icon: Trash2 },
+  { key: "insights", label: "Insights", icon: Lightbulb },
   { key: "stats", label: "Stats", icon: LineChart },
 ];
 
@@ -196,6 +210,7 @@ export default function ShiftCompanion() {
           {active === "reminders" && <RemindersView state={state} onUpdate={update} />}
           {active === "reports" && <ReportsView state={state} onUpdate={update} />}
           {active === "waste" && <WasteView state={state} onUpdate={update} />}
+          {active === "insights" && <InsightsView state={state} onUpdate={update} onCopy={copy} copyNote={copyNote} />}
           {active === "stats" && <StatsView state={state} onUpdate={update} />}
         </div>
       </section>
@@ -229,6 +244,9 @@ function normalizeState(saved: ShiftState): ShiftState {
     ...defaults,
     ...saved,
     needNow: saved.needNow ?? [],
+    suggestionDismissals: saved.suggestionDismissals ?? [],
+    predictions: saved.predictions ?? [],
+    insights: saved.insights,
     settings: {
       ...defaults.settings,
       ...(saved.settings ?? {}),
@@ -366,6 +384,9 @@ function TodayView({
   const low = state.items.filter((item) => item.status === "running low");
   const pending = state.reports.filter((report) => report.status === "pending" || report.followUpNeeded);
   const watch = state.expirations.filter((batch) => batch.status !== "okay");
+  const likelyNeeds = useMemo(() => predictShortagesWithRules(state, new Date()), [state]);
+  const suggestions = useMemo(() => [...suggestRemindersWithRules(state, new Date()), ...suggestChecklistWithRules(state, new Date())].slice(0, 3), [state]);
+  const wasteWatch = useMemo(() => detectWasteHeavyItems(state), [state]);
   const needNow = [
     ...missing.map((item) => `${item.name} — ${item.quantityNeeded || 1} ${item.unit}`),
     ...low.map((item) => `${item.name} — running low`),
@@ -398,9 +419,12 @@ function TodayView({
                   onUpdate((draft) => ({
                     ...draft,
                     smartPromptSkips: action.kind === "skip" ? [...draft.smartPromptSkips, prompt.id] : draft.smartPromptSkips,
-                    checklist: action.checklistId
+                    checklist: "checklistId" in action && action.checklistId
                       ? draft.checklist.map((item) => (item.id === action.checklistId ? { ...item, done: true } : item))
                       : draft.checklist,
+                    reminders: "reminderId" in action && action.reminderId
+                      ? draft.reminders.map((item) => (item.id === action.reminderId ? { ...item, doneToday: true } : item))
+                      : draft.reminders,
                   }), "smart-prompt")
                 }
                 className={action.kind === "done" ? "bg-leaf text-white" : "bg-skycap text-ink"}
@@ -414,6 +438,44 @@ function TodayView({
 
       <ChecklistEditor state={state} onUpdate={onUpdate} compact />
       <ShiftSetupCard state={state} onUpdate={onUpdate} />
+
+      <Card>
+        <h3 className="text-lg font-black">Likely needs today</h3>
+        <ul className="mt-3 grid gap-2 text-sm">
+          {(likelyNeeds.length ? likelyNeeds : [{ id: "none", message: "No strong pattern yet. Keep using Sync and Need Now to teach it.", itemName: "", reason: "", confidence: 0, createdAt: "" }]).slice(0, 4).map((prediction) => (
+            <li key={prediction.id} className="rounded-md bg-mist px-3 py-2 font-bold text-ink/75">{prediction.message}</li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-black">Suggestions</h3>
+        <div className="mt-3 grid gap-2">
+          {(suggestions.length ? suggestions : [{ id: "none", type: "routine", message: "No routine suggestions right now.", actionLabel: "Not now", createdAt: "" } as Suggestion]).map((suggestion) => (
+            <div key={suggestion.id} className="rounded-md bg-mist p-3">
+              <p className="text-sm font-bold text-ink/75">{suggestion.message}</p>
+              {suggestion.id !== "none" && (
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <PillButton onClick={() => onUpdate((draft) => applySuggestion(draft, suggestion), "suggestion-apply")} className="bg-leaf text-white">{suggestion.actionLabel}</PillButton>
+                  <PillButton onClick={() => onUpdate((draft) => ({ ...draft, suggestionDismissals: [{ id: crypto.randomUUID(), type: suggestion.type, entityId: suggestion.entityId, message: suggestion.message, dismissedAt: new Date().toISOString(), snoozeUntil: new Date(Date.now() + 86_400_000).toISOString() }, ...draft.suggestionDismissals] }), "suggestion-snooze")} className="bg-skycap text-ink">Not now</PillButton>
+                  <PillButton onClick={() => onUpdate((draft) => ({ ...draft, suggestionDismissals: [{ id: crypto.randomUUID(), type: suggestion.type, entityId: suggestion.entityId, message: suggestion.message, dismissedAt: new Date().toISOString() }, ...draft.suggestionDismissals] }), "suggestion-dismiss")} className="bg-white text-ink ring-1 ring-black/10">Don't suggest</PillButton>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {wasteWatch.length > 0 && (
+        <Card>
+          <h3 className="text-lg font-black">Waste watch</h3>
+          <ul className="mt-3 grid gap-2 text-sm">
+            {wasteWatch.slice(0, 3).map((item) => (
+              <li key={item.itemName} className="rounded-md bg-mist px-3 py-2 font-bold text-ink/75">{item.itemName} — high waste noted {item.count} times</li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2">
         <SummaryCard title="Need now" count={needNow.length} items={needNow} />
@@ -780,6 +842,8 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [ocrSuggestion, setOcrSuggestion] = useState<OcrCleanupResult | null>(null);
+  const [cleaningOcr, setCleaningOcr] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const items = state.items.filter((item) => filter === "all" || item.category === filter || item.status === filter);
   const candidates = duplicateCandidates(scanText, state.items);
@@ -821,6 +885,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
     setScanText("");
     setNewCategory("other");
     setNewLocation("Breakroom");
+    setOcrSuggestion(null);
     setPhotoName("");
     setPhotoPreviewUrl("");
     setUploadedImageUrl("");
@@ -840,6 +905,42 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
       items: draft.items.filter((entry) => entry.id !== item.id),
     }), "inventory-delete");
     setDeleteConfirmId("");
+  }
+
+  async function cleanLabel() {
+    if (!scanText.trim()) return;
+    setCleaningOcr(true);
+    try {
+      const response = await fetch("/api/ai/ocr-cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText: scanText, items: state.items }),
+      });
+      if (!response.ok) throw new Error("Cleanup failed");
+      const data = await response.json();
+      setOcrSuggestion(data.result);
+    } catch {
+      setOcrSuggestion(cleanOcrWithRules(scanText, state.items));
+    } finally {
+      setCleaningOcr(false);
+    }
+  }
+
+  function useOcrSuggestion(suggestion: OcrCleanupResult) {
+    setScanText(suggestion.cleanName);
+    setNewCategory(suggestion.category);
+    setNewLocation(newLocation || "Breakroom");
+  }
+
+  function mergeWithExisting(suggestion: OcrCleanupResult) {
+    if (!suggestion.duplicateItemId) return;
+    patchItem(suggestion.duplicateItemId, {
+      imageUrl: uploadedImageUrl || undefined,
+      category: suggestion.category,
+      unit: suggestion.unit as Unit,
+      location: newLocation.trim() || "Breakroom",
+    });
+    resetScan();
   }
 
   return (
@@ -882,10 +983,34 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
         {uploadError && <p className="mt-2 text-sm font-black text-tomato">{uploadError}</p>}
         <input
           value={scanText}
-          onChange={(event) => setScanText(event.target.value)}
+          onChange={(event) => {
+            setScanText(event.target.value);
+            setOcrSuggestion(null);
+          }}
           placeholder={photoName ? "OCR placeholder: type detected label text" : "Upload photo, then enter detected text"}
           className="mt-2 w-full rounded-lg border border-black/10 px-3 py-3"
         />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <PillButton onClick={cleanLabel} disabled={!scanText.trim() || cleaningOcr} className="bg-ink text-white disabled:opacity-50">
+            {cleaningOcr ? "Cleaning..." : "Clean label"}
+          </PillButton>
+          <PillButton onClick={() => setOcrSuggestion(cleanOcrWithRules(scanText, state.items))} disabled={!scanText.trim()} className="bg-skycap text-ink disabled:opacity-50">
+            Rules only
+          </PillButton>
+        </div>
+        {ocrSuggestion && (
+          <div className="mt-3 rounded-lg border border-leaf/20 bg-lime/70 p-3">
+            <p className="text-xs font-black uppercase text-ink/50">Suggested</p>
+            <h4 className="text-lg font-black">{ocrSuggestion.cleanName}</h4>
+            <p className="text-sm font-bold text-ink/65">Category: {ocrSuggestion.category} • Unit: {ocrSuggestion.unit} • Confidence {Math.round(ocrSuggestion.confidence * 100)}%</p>
+            {ocrSuggestion.duplicateName && <p className="mt-1 text-sm font-bold text-ink/65">Possible match: {ocrSuggestion.duplicateName}</p>}
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <PillButton onClick={() => useOcrSuggestion(ocrSuggestion)} className="bg-leaf text-white">Use</PillButton>
+              <PillButton onClick={() => setOcrSuggestion(null)} className="bg-white text-ink ring-1 ring-black/10">Edit</PillButton>
+              <PillButton onClick={() => mergeWithExisting(ocrSuggestion)} disabled={!ocrSuggestion.duplicateItemId} className="bg-ink text-white disabled:opacity-40">Merge</PillButton>
+            </div>
+          </div>
+        )}
         <div className="mt-3 grid gap-2">
           <label className="text-xs font-black uppercase text-ink/50">Where is it?</label>
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -928,7 +1053,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
                 id: crypto.randomUUID(),
                 name: scanText.trim(),
                 category: newCategory,
-                unit: "each",
+                unit: ocrSuggestion?.unit ?? "each",
                 location: newLocation.trim() || "Breakroom",
                 status: "stocked",
                 quantityNeeded: 0,
@@ -1217,6 +1342,101 @@ function WasteView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator:
           <Card key={entry.id}><h3 className="font-black">{entry.itemName}</h3><p className="text-sm font-bold text-ink/60">{entry.packagingCount} • {entry.rating} • {entry.trashType}</p></Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+function InsightsView({
+  state,
+  onUpdate,
+  onCopy,
+  copyNote,
+}: {
+  state: ShiftState;
+  onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void;
+  onCopy: (text: string) => void;
+  copyNote: string;
+}) {
+  const fallback = useMemo(() => weeklyInsightsWithRules(state, new Date()), [state]);
+  const insights = state.insights ?? fallback;
+  const [generating, setGenerating] = useState(false);
+
+  async function generateInsights() {
+    setGenerating(true);
+    try {
+      const response = await fetch("/api/ai/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state }),
+      });
+      if (!response.ok) throw new Error("Insight generation failed");
+      const data = await response.json();
+      onUpdate((draft) => ({ ...draft, insights: data.result, predictions: data.result.likelyNeeds }), "insights-generate");
+    } catch {
+      onUpdate((draft) => ({ ...draft, insights: fallback, predictions: fallback.likelyNeeds }), "insights-generate-rules");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const sustainabilityNote = insights.wasteWatch.length
+    ? `Observed repeated high packaging waste for ${insights.wasteWatch.map((item) => item.itemName).join(", ")}. Several restocks may require multiple boxes or containers; this is a personal observation, not an exact measurement.`
+    : "No repeated high packaging waste pattern yet.";
+
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-leaf">Rules first, AI optional</p>
+            <h2 className="text-2xl font-black">Insights</h2>
+            <p className="mt-1 text-sm font-bold text-ink/60">Generated on demand so shifts stay fast.</p>
+          </div>
+          <PillButton onClick={generateInsights} disabled={generating} className="bg-leaf text-white disabled:opacity-60">
+            {generating ? "Generating" : "Generate"}
+          </PillButton>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-black">Likely needs today</h3>
+        <ul className="mt-3 grid gap-2 text-sm">
+          {(insights.likelyNeeds.length ? insights.likelyNeeds : fallback.likelyNeeds).slice(0, 5).map((prediction) => (
+            <li key={prediction.id} className="rounded-md bg-mist px-3 py-2 font-bold text-ink/75">{prediction.message}</li>
+          ))}
+        </ul>
+      </Card>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <SummaryCard title="Most missing" count={insights.mostMissing.length} items={insights.mostMissing.map((item) => `${item.name} — ${item.count}`)} />
+        <SummaryCard title="Most low stock" count={insights.mostLowStock.length} items={insights.mostLowStock.map((item) => `${item.name} — ${item.count}`)} />
+        <SummaryCard title="Most reported" count={insights.mostReported.length} items={insights.mostReported.map((item) => `${item.name} — ${item.count}`)} />
+        <SummaryCard title="Pending 2+ days" count={insights.pendingReports.length} items={insights.pendingReports.map((item) => item.itemName)} />
+      </div>
+
+      <Card>
+        <h3 className="text-lg font-black">Opening readiness</h3>
+        <p className="mt-2 text-sm font-bold text-ink/65">Average {insights.readinessAverage}%, best {insights.readinessBest}%</p>
+        <p className="mt-1 text-sm font-bold text-ink/65">Average floor run: {insights.averageFloorMinutes || 0} min</p>
+        {insights.fastestFloorRun && <p className="mt-1 text-sm font-bold text-ink/65">Fastest: {insights.fastestFloorRun.location}, {insights.fastestFloorRun.minutes} min</p>}
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-black">Waste watch</h3>
+        <ul className="mt-3 grid gap-2 text-sm">
+          {(insights.wasteWatch.length ? insights.wasteWatch : [{ itemName: "None yet", count: 0, note: "No waste-heavy pattern yet." }]).map((item) => (
+            <li key={item.itemName} className="rounded-md bg-mist px-3 py-2 font-bold text-ink/75">{item.note}</li>
+          ))}
+        </ul>
+        <PillButton onClick={() => onCopy(sustainabilityNote)} className="mt-3 bg-ink text-white">Copy sustainability note</PillButton>
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-black">Weekly summary</h3>
+        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-mist p-3 text-sm font-bold text-ink/75">{insights.summary}</pre>
+        <PillButton onClick={() => onCopy(insights.summary)} className="mt-3 bg-leaf text-white"><Copy size={16} className="inline" /> Copy weekly summary</PillButton>
+        {copyNote && <p className="mt-2 text-sm font-bold text-leaf">{copyNote}</p>}
+      </Card>
     </div>
   );
 }

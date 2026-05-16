@@ -1,4 +1,4 @@
-export type NavKey = "today" | "needNow" | "inventory" | "panic" | "reminders" | "reports" | "waste" | "stats";
+export type NavKey = "today" | "needNow" | "inventory" | "panic" | "reminders" | "reports" | "waste" | "insights" | "stats";
 
 export type ItemCategory = "dairy" | "drinks" | "snacks" | "coffee" | "paper goods" | "cleaning" | "other";
 export type Unit = "each" | "case" | "bag" | "box" | "tray" | "container";
@@ -98,6 +98,65 @@ export interface FloorRun {
   notes?: string;
 }
 
+export interface Prediction {
+  id: string;
+  itemName: string;
+  location?: string;
+  message: string;
+  quantityHint?: string;
+  reason: string;
+  confidence: number;
+  createdAt: string;
+}
+
+export interface Suggestion {
+  id: string;
+  type: "reminder" | "checklist" | "routine" | "waste" | "expiration";
+  entityId?: string;
+  message: string;
+  actionLabel: string;
+  createdAt: string;
+  dismissed?: boolean;
+  snoozeUntil?: string;
+}
+
+export interface SuggestionDismissal {
+  id: string;
+  type: string;
+  entityId?: string;
+  message: string;
+  dismissedAt: string;
+  snoozeUntil?: string;
+}
+
+export interface OcrCleanupResult {
+  rawText: string;
+  cleanName: string;
+  confidence: number;
+  category: ItemCategory;
+  unit: Unit;
+  duplicateItemId?: string;
+  duplicateName?: string;
+}
+
+export interface WeeklyInsightResult {
+  generatedAt: string;
+  likelyNeeds: Prediction[];
+  reminderSuggestions: Suggestion[];
+  checklistSuggestions: Suggestion[];
+  mostMissing: Array<{ name: string; count: number }>;
+  mostLowStock: Array<{ name: string; count: number }>;
+  mostReported: Array<{ name: string; count: number }>;
+  pendingReports: ReportedItem[];
+  readinessAverage: number;
+  readinessBest: number;
+  averageFloorMinutes: number;
+  fastestFloorRun?: FloorRun;
+  wasteWatch: Array<{ itemName: string; count: number; note: string }>;
+  expirationRisks: ExpirationBatch[];
+  summary: string;
+}
+
 export interface ShiftState {
   id: string;
   shiftDate: string;
@@ -112,6 +171,9 @@ export interface ShiftState {
   waste: WasteObservation[];
   floorRuns: FloorRun[];
   smartPromptSkips: string[];
+  suggestionDismissals: SuggestionDismissal[];
+  predictions: Prediction[];
+  insights?: WeeklyInsightResult;
   xp: number;
   settings: {
     smartShiftEnabled: boolean;
