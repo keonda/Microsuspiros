@@ -1,0 +1,19 @@
+{
+  "name": "Shift Companion",
+  "short_name": "Shift",
+  "description": "Fast offline shift tracker for breakroom and microkitchen attendants.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f7f2",
+  "theme_color": "#2f6f4f",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

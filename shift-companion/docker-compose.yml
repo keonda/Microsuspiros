@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shift
+      POSTGRES_PASSWORD: shift
+      POSTGRES_DB: shift_companion
+    volumes:
+      - shift_companion_db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://shift:shift@db:5432/shift_companion?schema=public
+      AUTH_SECRET: change-me
+      SINGLE_USER_MODE: "true"
+      SINGLE_USER_EMAIL: attendant@example.com
+      SINGLE_USER_PASSWORD: shiftcompanion
+      NEXT_PUBLIC_APP_NAME: Shift Companion
+    ports:
+      - "3000:3000"
+
+volumes:
+  shift_companion_db:

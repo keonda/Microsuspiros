@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ItemCategory {
+  DAIRY
+  DRINKS
+  SNACKS
+  COFFEE
+  PAPER_GOODS
+  CLEANING
+  OTHER
+}
+
+enum Unit {
+  EACH
+  CASE
+  BAG
+  BOX
+  TRAY
+  CONTAINER
+}
+
+enum ItemStatus {
+  STOCKED
+  RUNNING_LOW
+  MISSING
+  REPORTED
+  RESTOCKED
+}
+
+enum ReminderRepeat {
+  ONCE
+  DAILY
+  WEEKDAYS
+  CUSTOM
+}
+
+enum ReminderStyle {
+  VIBRATION_ONLY
+  NOTIFICATION_BANNER
+  BOTH
+}
+
+enum ReportMethod {
+  CHAT
+  IN_PERSON
+  RADIO
+  EMAIL
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  ORDERED
+  RESTOCKED
+  NO_ACTION
+}
+
+enum ExpirationStatus {
+  OKAY
+  USE_SOON
+  CHECK_TODAY
+  EXPIRED
+}
+
+enum WasteRating {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TrashType {
+  CARDBOARD
+  PLASTIC
+  MIXED
+  FOOD_WASTE
+  OTHER
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  shifts       Shift[]
+  reminders    Reminder[]
+  reports      ReportedItem[]
+  badges       UserBadge[]
+  settings     AppSetting[]
+}
+
+model Shift {
+  id          String             @id @default(cuid())
+  userId      String
+  date        DateTime
+  notes       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inventory   InventoryEntry[]
+  waste       WasteObservation[]
+  floorRuns   FloorRun[]
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  items     Item[]
+  reminders Reminder[]
+}
+
+model Item {
+  id                String             @id @default(cuid())
+  name              String
+  category          ItemCategory
+  unit              Unit
+  defaultLocationId String?
+  currentStatus     ItemStatus         @default(STOCKED)
+  quantityNeeded    Int                @default(0)
+  quantityOnHand    Int?
+  rotating          Boolean            @default(false)
+  active            Boolean            @default(true)
+  imageUrl          String?
+  notes             String?
+  rotationStartDate DateTime?
+  expectedEndDate   DateTime?
+  lastSeenDate      DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  defaultLocation   Location?          @relation(fields: [defaultLocationId], references: [id])
+  entries           InventoryEntry[]
+  reports           ReportedItem[]
+  expirations       ExpirationBatch[]
+  waste             WasteObservation[]
+
+  @@index([name])
+  @@index([currentStatus])
+}
+
+model InventoryEntry {
+  id             String     @id @default(cuid())
+  shiftId        String
+  itemId         String
+  status         ItemStatus
+  quantityNeeded Int        @default(0)
+  quantityOnHand Int?
+  notes          String?
+  createdAt      DateTime   @default(now())
+  shift          Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  item           Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  title     String
+  weight    Int
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Reminder {
+  id         String        @id @default(cuid())
+  userId     String
+  title      String
+  locationId String?
+  time       String
+  repeat     ReminderRepeat @default(DAILY)
+  style      ReminderStyle  @default(BOTH)
+  active     Boolean        @default(true)
+  notes      String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location   Location?      @relation(fields: [locationId], references: [id])
+}
+
+model ReportedItem {
+  id             String       @id @default(cuid())
+  userId         String
+  itemId         String?
+  itemName       String
+  reportedAt     DateTime     @default(now())
+  reportedTo     String?
+  method         ReportMethod @default(CHAT)
+  status         ReportStatus @default(PENDING)
+  followUpNeeded Boolean      @default(false)
+  notes          String?
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item           Item?        @relation(fields: [itemId], references: [id])
+
+  @@index([status])
+  @@index([itemName])
+}
+
+model ExpirationBatch {
+  id         String           @id @default(cuid())
+  itemId     String?
+  itemName   String
+  quantity   Int              @default(1)
+  location   String?
+  exactDate  DateTime?
+  estimate   String?
+  status     ExpirationStatus @default(OKAY)
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  item       Item?            @relation(fields: [itemId], references: [id])
+}
+
+model WasteObservation {
+  id             String      @id @default(cuid())
+  shiftId        String?
+  itemId         String?
+  itemName       String
+  date           DateTime    @default(now())
+  rating         WasteRating
+  packagingCount String?
+  trashType      TrashType
+  notes          String?
+  shift          Shift?      @relation(fields: [shiftId], references: [id])
+  item           Item?       @relation(fields: [itemId], references: [id])
+}
+
+model FloorRun {
+  id        String   @id @default(cuid())
+  shiftId   String
+  location  String
+  checklist Json
+  startedAt DateTime
+  minutes   Int
+  notes     String?
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String?
+  userBadges  UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge    Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
