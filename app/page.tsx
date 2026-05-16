@@ -1,21 +1,6 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Bell,
-  ClipboardCheck,
-  Coffee,
-  Copy,
-  Home,
-  LineChart,
-  ListChecks,
-  PackageCheck,
-  Plus,
-  RotateCcw,
-  ScanLine,
-  Timer,
-  Trash2,
-} from "lucide-react";
+import * as LucideIcons from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
   ChecklistItem,
@@ -38,10 +23,25 @@ import {
 } from "@/lib/shift-logic";
 import { OfflineStore, SyncStatus } from "@/lib/offline-store";
 
+const {
+  Bell,
+  ClipboardCheck,
+  Coffee,
+  Copy,
+  Home,
+  LineChart,
+  PackageCheck,
+  Plus,
+  ScanLine,
+  Timer,
+  Trash2,
+  TriangleAlert,
+} = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; className?: string }>>;
+
 const nav: Array<{ key: NavKey; label: string; icon: React.ComponentType<{ size?: number }> }> = [
   { key: "today", label: "Today", icon: Home },
   { key: "inventory", label: "Inventory", icon: PackageCheck },
-  { key: "panic", label: "Panic", icon: AlertTriangle },
+  { key: "panic", label: "Panic", icon: TriangleAlert },
   { key: "reminders", label: "Reminders", icon: Bell },
   { key: "reports", label: "Reports", icon: ClipboardCheck },
   { key: "waste", label: "Waste", icon: Trash2 },

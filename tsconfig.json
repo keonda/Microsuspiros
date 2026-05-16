@@ -30,12 +30,28 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "lib/**/*.ts",
+    "types/**/*.ts",
+    "prisma/**/*.ts",
+    "*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next",
+    "personal-homepage-assistant",
+    "MicroSuspiros-Studio",
+    "breathing-world-mud",
+    "discord-creative-assistant",
+    "download-butler",
+    "micro-rhythm-youtube-extension",
+    "microsuspiros-inspiration-radar",
+    "wallpaper-forge",
+    "windows-system-monitor",
+    "youtube-inspiration-extension",
+    "youtube-inspiration-player"
   ]
 }
