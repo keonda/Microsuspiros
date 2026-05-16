@@ -1,6 +1,9 @@
 #!/bin/sh
 set -u
 
+export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+export PORT="${PORT:-3000}"
+
 echo "Preparing database schema..."
 if ! npx prisma migrate deploy; then
   echo "Migration deploy failed; attempting init migration recovery..."
