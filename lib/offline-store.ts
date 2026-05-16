@@ -1,6 +1,6 @@
 import type { ShiftState } from "@/types/shift";
 
-export type SyncStatus = "Saved locally" | "Sync pending" | "Synced";
+export type SyncStatus = "Saved locally" | "Sync pending" | "Synced" | "Sync failed";
 
 export interface SyncEvent {
   id: string;

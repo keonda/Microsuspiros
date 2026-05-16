@@ -58,6 +58,8 @@ export default function ShiftCompanion() {
   const [active, setActive] = useState<NavKey>("today");
   const [state, setState] = useState<ShiftState>(() => createDefaultState());
   const [sync, setSync] = useState<SyncStatus>("Saved locally");
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [copyNote, setCopyNote] = useState("");
   const [now, setNow] = useState(new Date());
 
@@ -94,13 +96,15 @@ export default function ShiftCompanion() {
       setSync("Saved locally");
       return;
     }
+    setSyncing(true);
     const pending = await store.pending();
-    if (!pending.length) {
-      setSync("Synced");
-      return;
-    }
-    setSync("Sync pending");
     try {
+      if (!pending.length) {
+        setSync("Synced");
+        setLastSyncedAt(new Date().toISOString());
+        return;
+      }
+      setSync("Sync pending");
       const response = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,8 +113,11 @@ export default function ShiftCompanion() {
       if (!response.ok) throw new Error("Sync failed");
       await store.clearPending(pending.map((event) => event.id));
       setSync("Synced");
+      setLastSyncedAt(new Date().toISOString());
     } catch {
-      setSync("Sync pending");
+      setSync("Sync failed");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -139,8 +146,18 @@ export default function ShiftCompanion() {
             <p className="text-xs font-bold uppercase tracking-wide text-leaf">Shift Companion</p>
             <h1 className="text-2xl font-black text-ink">Breakroom shift</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="rounded-full bg-white px-3 py-2 text-xs font-bold shadow-soft">{sync}</div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="rounded-lg bg-white px-3 py-2 text-xs font-bold shadow-soft">
+              <div>{syncing ? "Syncing..." : sync}</div>
+              {lastSyncedAt && <div className="font-normal text-ink/55">Last {new Date(lastSyncedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>}
+            </div>
+            <button
+              onClick={syncNow}
+              disabled={syncing}
+              className="tap rounded-full bg-leaf px-3 py-2 text-xs font-black text-white shadow-soft disabled:opacity-60"
+            >
+              Sync now
+            </button>
             <button
               onClick={() => {
                 localStorage.removeItem("shift-companion-session");
