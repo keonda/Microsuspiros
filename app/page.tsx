@@ -448,9 +448,17 @@ function ShiftSetupCard({
   const settings = state.settings;
   const floorKey = settings.activeShift === "AM" ? "amFloors" : "pmFloors";
   const floors = settings[floorKey];
+  const [floorDraft, setFloorDraft] = useState(floors.join(", "));
 
-  function updateFloors(value: string) {
-    const nextFloors = value.split(",").map((floor) => floor.trim()).filter(Boolean);
+  useEffect(() => {
+    setFloorDraft(floors.join(", "));
+  }, [floorKey, floors]);
+
+  function saveFloors() {
+    const nextFloors = floorDraft
+      .split(/[,;\n]+/)
+      .map((floor) => floor.trim())
+      .filter(Boolean);
     onUpdate((draft) => ({
       ...draft,
       settings: { ...draft.settings, [floorKey]: nextFloors },
@@ -499,8 +507,14 @@ function ShiftSetupCard({
       <label className="mt-3 grid gap-1 text-sm font-black">
         {settings.activeShift} floors
         <input
-          value={floors.join(", ")}
-          onChange={(event) => updateFloors(event.target.value)}
+          value={floorDraft}
+          onChange={(event) => setFloorDraft(event.target.value)}
+          onBlur={saveFloors}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
           placeholder="Floor 3, Floor 6"
           className="rounded-lg border border-black/10 px-3 py-3 font-normal"
         />
@@ -520,6 +534,10 @@ function NeedNowView({
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [location, setLocation] = useState(activeFloors[0] ?? "Breakroom A");
+  const itemSuggestions = state.items
+    .filter((item) => item.active)
+    .filter((item) => !name.trim() || item.name.toLowerCase().includes(name.trim().toLowerCase()))
+    .slice(0, name.trim() ? 6 : 8);
   const needs = [
     ...state.items
       .filter((item) => item.status === "missing" || item.status === "running low" || item.status === "reported")
@@ -558,6 +576,12 @@ function NeedNowView({
     }, "need-now-clear");
   }
 
+  function pickInventoryItem(item: InventoryItem) {
+    setName(item.name);
+    setQuantity(item.quantityNeeded || 1);
+    setLocation(item.location);
+  }
+
   return (
     <div className="grid gap-4">
       <Card className="bg-leaf text-white">
@@ -568,6 +592,19 @@ function NeedNowView({
         <h3 className="text-lg font-black">Add need for today</h3>
         <div className="mt-3 grid gap-2">
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Item needed" className="rounded-lg border border-black/10 px-3 py-3" />
+          {itemSuggestions.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {itemSuggestions.map((item) => (
+                <PillButton
+                  key={item.id}
+                  onClick={() => pickInventoryItem(item)}
+                  className={name === item.name ? "bg-leaf text-white" : "bg-mist text-ink"}
+                >
+                  {item.name}
+                </PillButton>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-[88px_1fr] gap-2">
             <input value={quantity} onChange={(event) => setQuantity(Number(event.target.value) || 1)} type="number" min={1} className="rounded-lg border border-black/10 px-3 py-3" />
             <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Location/floor" className="rounded-lg border border-black/10 px-3 py-3" />
@@ -584,10 +621,20 @@ function NeedNowView({
           <PillButton
             onClick={() => {
               if (!name.trim()) return;
+              const matchedItem = state.items.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
               onUpdate((draft) => ({
                 ...draft,
                 needNow: [
-                  { id: crypto.randomUUID(), name: name.trim(), quantity, unit: "each", location, source: "manual", done: false, createdAt: new Date().toISOString() },
+                  {
+                    id: crypto.randomUUID(),
+                    name: name.trim(),
+                    quantity,
+                    unit: matchedItem?.unit ?? "each",
+                    location,
+                    source: "manual",
+                    done: false,
+                    createdAt: new Date().toISOString(),
+                  },
                   ...draft.needNow,
                 ],
               }), "need-now-add");
