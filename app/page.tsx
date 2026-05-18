@@ -669,7 +669,7 @@ function NeedNowView({
 }) {
   const activeFloors = state.settings.activeShift === "AM" ? state.settings.amFloors : state.settings.pmFloors;
   const [name, setName] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [quantityDraft, setQuantityDraft] = useState("1");
   const [location, setLocation] = useState(activeFloors[0] ?? "Breakroom A");
   const itemSuggestions = state.items
     .filter((item) => item.active)
@@ -715,7 +715,7 @@ function NeedNowView({
 
   function pickInventoryItem(item: InventoryItem) {
     setName(item.name);
-    setQuantity(item.quantityNeeded || 1);
+    setQuantityDraft(String(item.quantityNeeded || 1));
     setLocation(item.location);
   }
 
@@ -743,7 +743,14 @@ function NeedNowView({
             </div>
           )}
           <div className="grid grid-cols-[88px_1fr] gap-2">
-            <input value={quantity} onChange={(event) => setQuantity(Number(event.target.value) || 1)} type="number" min={1} className="rounded-lg border border-black/10 px-3 py-3" />
+            <input
+              value={quantityDraft}
+              onChange={(event) => setQuantityDraft(event.target.value)}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="1"
+              className="rounded-lg border border-black/10 px-3 py-3"
+            />
             <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Location/floor" className="rounded-lg border border-black/10 px-3 py-3" />
           </div>
           {activeFloors.length > 0 && (
@@ -759,6 +766,7 @@ function NeedNowView({
             onClick={() => {
               if (!name.trim()) return;
               const matchedItem = state.items.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
+              const quantity = Math.max(1, Number(quantityDraft) || 1);
               onUpdate((draft) => ({
                 ...draft,
                 needNow: [
@@ -776,7 +784,7 @@ function NeedNowView({
                 ],
               }), "need-now-add");
               setName("");
-              setQuantity(1);
+              setQuantityDraft("1");
             }}
             className="bg-ink text-white"
           >
