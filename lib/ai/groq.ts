@@ -7,7 +7,7 @@ export async function runGroqJson(prompt: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.AI_MODEL || "llama-3.1-8b-instant",
+      model: process.env.AI_MODEL || "openai/gpt-oss-120b",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "You return only strict JSON. No markdown." },
@@ -29,7 +29,7 @@ export async function runGroqVisionJson(prompt: string, imageDataUrl: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.AI_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
+      model: process.env.AI_MODEL || "openai/gpt-oss-120b",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "You return only strict JSON. No markdown." },
