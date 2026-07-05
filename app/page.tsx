@@ -3,6 +3,7 @@
 import * as LucideIcons from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
+  CapturedEntry,
   ChecklistItem,
   ExpirationBatch,
   FloorRun,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/shift-logic";
 import { OfflineStore, SyncStatus } from "@/lib/offline-store";
 import { mergeShiftSnapshots } from "@/lib/sync-merge";
+import { applyCapturedEntry, confirmCapturedEntry, createCapturedEntry, dismissCapturedEntry, shouldShowSyncProblem } from "@/lib/capture";
 import {
   applySuggestion,
   cleanOcrWithRules,
@@ -39,10 +41,14 @@ import {
 
 const {
   Bell,
+  BookOpen,
+  CheckSquare,
   ClipboardCheck,
   Coffee,
   Copy,
   Home,
+  History,
+  Inbox,
   LineChart,
   Lightbulb,
   PackageCheck,
@@ -57,14 +63,11 @@ const {
 
 const nav: Array<{ key: NavKey; label: string; icon: React.ComponentType<{ size?: number }> }> = [
   { key: "today", label: "Today", icon: Home },
-  { key: "needNow", label: "Need Now", icon: ShoppingBasket },
-  { key: "inventory", label: "Inventory", icon: PackageCheck },
-  { key: "panic", label: "Panic", icon: TriangleAlert },
-  { key: "reminders", label: "Reminders", icon: Bell },
-  { key: "reports", label: "Reports", icon: ClipboardCheck },
-  { key: "waste", label: "Waste", icon: Trash2 },
-  { key: "insights", label: "Insights", icon: Lightbulb },
-  { key: "stats", label: "Stats", icon: LineChart },
+  { key: "notebook", label: "Notebook", icon: BookOpen },
+  { key: "checklist", label: "Checklist", icon: CheckSquare },
+  { key: "inbox", label: "Inbox", icon: Inbox },
+  { key: "history", label: "History", icon: History },
+  { key: "settings", label: "Settings", icon: Settings },
 ];
 
 const store = new OfflineStore("shift-companion-state");
@@ -79,6 +82,7 @@ export default function ShiftCompanion() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [copyNote, setCopyNote] = useState("");
   const [now, setNow] = useState(new Date());
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
     setSessionEmail(localStorage.getItem("shift-companion-session"));
@@ -87,8 +91,15 @@ export default function ShiftCompanion() {
       if (saved) setState(normalizeState(saved));
     });
     navigator.serviceWorker?.register("/sw.js").catch(() => undefined);
+    setOnline(navigator.onLine);
+    const markOnline = () => setOnline(true);
+    const markOffline = () => setOnline(false);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
     const tick = window.setInterval(() => setNow(new Date()), 60_000);
     return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
       window.clearInterval(tick);
     };
   }, []);
@@ -97,14 +108,22 @@ export default function ShiftCompanion() {
     setState((current) => {
       const next = mutator({ ...current, updatedAt: new Date().toISOString() });
       store.save(next, action).then(() => {
-        setSync(navigator.onLine ? "Sync pending" : "Saved locally");
+        setSync(online ? "Sync pending" : "Saved locally");
       });
       return next;
     });
   }
 
+  useEffect(() => {
+    if (sync !== "Sync pending" || syncing || !online) return;
+    const timeout = window.setTimeout(() => {
+      syncNow();
+    }, 1000);
+    return () => window.clearTimeout(timeout);
+  }, [sync, syncing, online]);
+
   async function syncNow() {
-    if (!navigator.onLine) {
+    if (!online) {
       setSync("Saved locally");
       return;
     }
@@ -166,17 +185,15 @@ export default function ShiftCompanion() {
             <h1 className="text-2xl font-black text-ink">Breakroom shift</h1>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="rounded-lg bg-white px-3 py-2 text-xs font-bold shadow-soft">
-              <div>{syncing ? "Syncing..." : sync}</div>
-              {lastSyncedAt && <div className="font-normal text-ink/55">Last {new Date(lastSyncedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>}
-            </div>
-            <button
-              onClick={syncNow}
-              disabled={syncing}
-              className="tap rounded-full bg-leaf px-3 py-2 text-xs font-black text-white shadow-soft disabled:opacity-60"
-            >
-              Sync now
-            </button>
+            {shouldShowSyncProblem(sync, online) && (
+              <button
+                onClick={syncNow}
+                disabled={syncing}
+                className="tap rounded-full bg-tomato px-3 py-2 text-xs font-black text-white shadow-soft disabled:opacity-60"
+              >
+                {!online ? "Offline" : syncing ? "Retrying" : "Sync failed"}
+              </button>
+            )}
             <button
               onClick={() => {
                 localStorage.removeItem("shift-companion-session");
@@ -203,17 +220,14 @@ export default function ShiftCompanion() {
               copyNote={copyNote}
               onCopy={copy}
               onUpdate={update}
-              openPanic={() => setActive("panic")}
+              openPanic={() => setActive("history")}
             />
           )}
-          {active === "needNow" && <NeedNowView state={state} onUpdate={update} />}
-          {active === "inventory" && <InventoryView state={state} onUpdate={update} />}
-          {active === "panic" && <PanicView state={state} onUpdate={update} onCopy={copy} />}
-          {active === "reminders" && <RemindersView state={state} onUpdate={update} />}
-          {active === "reports" && <ReportsView state={state} onUpdate={update} />}
-          {active === "waste" && <WasteView state={state} onUpdate={update} />}
-          {active === "insights" && <InsightsView state={state} onUpdate={update} onCopy={copy} copyNote={copyNote} />}
-          {active === "stats" && <StatsView state={state} onUpdate={update} />}
+          {active === "notebook" && <NotebookView state={state} onUpdate={update} />}
+          {active === "checklist" && <ChecklistEditor state={state} onUpdate={update} />}
+          {active === "inbox" && <InboxView state={state} onUpdate={update} />}
+          {active === "history" && <HistoryView state={state} onUpdate={update} onCopy={copy} copyNote={copyNote} />}
+          {active === "settings" && <SettingsView state={state} onUpdate={update} />}
         </div>
       </section>
 
@@ -246,6 +260,7 @@ function normalizeState(saved: ShiftState): ShiftState {
     ...defaults,
     ...saved,
     needNow: saved.needNow ?? [],
+    capturedEntries: saved.capturedEntries ?? [],
     suggestionDismissals: saved.suggestionDismissals ?? [],
     predictions: saved.predictions ?? [],
     insights: saved.insights,
@@ -371,12 +386,8 @@ function PillButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
 
 function TodayView({
   state,
-  readiness,
   prompt,
-  copyNote,
-  onCopy,
   onUpdate,
-  openPanic,
 }: {
   state: ShiftState;
   readiness: number;
@@ -386,144 +397,103 @@ function TodayView({
   onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void;
   openPanic: () => void;
 }) {
-  const missing = state.items.filter((item) => item.status === "missing");
-  const low = state.items.filter((item) => item.status === "running low");
-  const pending = state.reports.filter((report) => report.status === "pending" || report.followUpNeeded);
-  const watch = state.expirations.filter((batch) => batch.status !== "okay");
-  const likelyNeeds = useMemo(() => predictShortagesWithRules(state, new Date()), [state]);
-  const suggestions = useMemo(() => [...suggestRemindersWithRules(state, new Date()), ...suggestChecklistWithRules(state, new Date())].slice(0, 3), [state]);
-  const wasteWatch = useMemo(() => detectWasteHeavyItems(state), [state]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const shiftStartHour = Number(state.settings.shiftStartTime.split(":")[0] ?? 7);
-  const hoursFromStart = new Date().getHours() - shiftStartHour;
-  const checklistStartsOpen = hoursFromStart >= 0 && hoursFromStart < 2 && readiness < 95;
-  const needNow = [
-    ...missing.map((item) => `${item.name} — ${item.quantityNeeded || 1} ${item.unit}`),
-    ...low.map((item) => `${item.name} — running low`),
-    ...state.urgent.map((item) => `${item.name} — urgent`),
-    ...state.needNow.filter((item) => !item.done).map((item) => `${item.name} — ${item.location}`),
-  ];
+  const [text, setText] = useState("");
+  const unfinishedChecklist = state.checklist.filter((item) => !item.done);
+  const inboxCount = state.capturedEntries.filter((entry) => !entry.confirmed && !entry.dismissed).length;
+  const activeNeeds = state.needNow.filter((item) => !item.done).length + state.items.filter((item) => item.status === "missing" || item.status === "running low" || item.status === "reported").length;
+  const probablyNext = useMemo(() => predictShortagesWithRules(state, new Date())[0], [state]);
+  const nextChecklist = unfinishedChecklist.find((item) => /coffee|cup|milk/i.test(item.title)) ?? unfinishedChecklist[0];
+
+  function capture() {
+    if (!text.trim()) return;
+    const entry = createCapturedEntry(text);
+    onUpdate((draft) => applyCapturedEntry(draft, entry), "capture-entry");
+    setText("");
+  }
+
+  function quickCapture(value: string) {
+    const entry = createCapturedEntry(value);
+    onUpdate((draft) => applyCapturedEntry(draft, entry), "capture-entry");
+  }
 
   return (
     <div className="grid gap-4">
       <Card className="bg-leaf text-white">
-        <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-black uppercase opacity-80">{state.settings.buildingName || "Breakroom"} • {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</p>
+        <div className="mt-1 flex items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase opacity-80">{state.settings.buildingName || "Breakroom"} • {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</p>
-            <h2 className="mt-1 text-2xl font-black">Ready: {readiness}%</h2>
-            <p className="text-sm font-bold opacity-90">{getReadinessLabel(readiness)}{state.settings.attendantName ? ` • ${state.settings.attendantName}` : ""}</p>
+            <h2 className="text-3xl font-black">{state.settings.attendantName ? `${state.settings.attendantName}'s shift` : "Today's shift"}</h2>
+            <p className="mt-1 text-sm font-bold opacity-90">{unfinishedChecklist.length + activeNeeds + inboxCount} things left</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Coffee className="shrink-0" size={30} />
-            <button
-              aria-label="Shift settings"
-              onClick={() => setSettingsOpen(true)}
-              className="tap grid h-11 w-11 place-items-center rounded-lg bg-white/15 text-white ring-1 ring-white/30"
-            >
-              <Settings size={22} />
-            </button>
-          </div>
+          <Coffee size={34} />
         </div>
       </Card>
 
-      {settingsOpen && <ShiftSettingsPanel state={state} onUpdate={onUpdate} onClose={() => setSettingsOpen(false)} />}
+      <Card>
+        <label className="text-xs font-black uppercase text-leaf">What happened?</label>
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Floor 6 almost out of coffee"
+          className="mt-2 min-h-36 w-full resize-none rounded-lg border border-black/10 px-4 py-4 text-lg font-bold outline-none focus:ring-2 focus:ring-leaf/40"
+        />
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <PillButton onClick={() => undefined} className="bg-skycap text-ink">Type</PillButton>
+          <PillButton onClick={() => quickCapture("Voice note: ")} className="bg-skycap text-ink">Speak</PillButton>
+          <PillButton onClick={() => quickCapture("Photo note captured")} className="bg-skycap text-ink">Photo</PillButton>
+        </div>
+        <PillButton onClick={capture} className="mt-3 w-full bg-ink py-4 text-lg text-white">Capture</PillButton>
+      </Card>
+
+      {nextChecklist && (
+        <Card>
+          <p className="text-xs font-black uppercase text-leaf">Opening</p>
+          <h3 className="mt-1 text-xl font-black">{unfinishedChecklist.length} things left</h3>
+          <div className="mt-3 grid gap-2">
+            {state.checklist.slice(0, 4).map((item) => (
+              <button
+                key={item.id}
+                onClick={() => onUpdate((draft) => ({ ...draft, checklist: draft.checklist.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry) }), "checklist-toggle")}
+                className={`tap rounded-lg px-3 py-3 text-left text-sm font-black ${item.done ? "bg-leaf text-white" : "bg-mist text-ink"}`}
+              >
+                {item.done ? "?" : "?"} {item.title}
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {state.settings.smartShiftEnabled && prompt && (
-        <Card className="border-2 border-honey">
-          <p className="text-xs font-black uppercase text-leaf">Smart prompt</p>
-          <h3 className="mt-1 text-xl font-black">{prompt.text}</h3>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {prompt.actions.map((action) => (
-              <PillButton
-                key={action.label}
-                onClick={() =>
-                  onUpdate((draft) => ({
-                    ...draft,
-                    smartPromptSkips: action.kind === "skip" ? [...draft.smartPromptSkips, prompt.id] : draft.smartPromptSkips,
-                    checklist: "checklistId" in action && action.checklistId
-                      ? draft.checklist.map((item) => (item.id === action.checklistId ? { ...item, done: true } : item))
-                      : draft.checklist,
-                    reminders: "reminderId" in action && action.reminderId
-                      ? draft.reminders.map((item) => (item.id === action.reminderId ? { ...item, doneToday: true } : item))
-                      : draft.reminders,
-                  }), "smart-prompt")
-                }
-                className={action.kind === "done" ? "bg-leaf text-white" : "bg-skycap text-ink"}
-              >
-                {action.label}
-              </PillButton>
-            ))}
+        <Card className="border border-honey">
+          <p className="text-xs font-black uppercase text-leaf">One quick win</p>
+          <h3 className="mt-1 text-lg font-black">{nextChecklist ? `${nextChecklist.title}. 15 seconds.` : prompt.text}</h3>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <PillButton
+              onClick={() => nextChecklist && onUpdate((draft) => ({ ...draft, checklist: draft.checklist.map((item) => item.id === nextChecklist.id ? { ...item, done: true } : item) }), "quick-win")}
+              className="bg-leaf text-white"
+            >
+              Do it
+            </PillButton>
+            <PillButton onClick={() => onUpdate((draft) => ({ ...draft, smartPromptSkips: [...draft.smartPromptSkips, prompt.id] }), "smart-prompt-skip")} className="bg-skycap text-ink">Skip</PillButton>
           </div>
         </Card>
       )}
 
-      <ChecklistEditor state={state} onUpdate={onUpdate} compact startExpanded={checklistStartsOpen} />
-
-      <Card>
-        <h3 className="text-lg font-black">Likely needs today</h3>
-        <ul className="mt-3 grid gap-2 text-sm">
-          {(likelyNeeds.length ? likelyNeeds : [{ id: "none", message: "No strong pattern yet. Keep using Sync and Need Now to teach it.", itemName: "", reason: "", confidence: 0, createdAt: "" }]).slice(0, 4).map((prediction) => (
-            <li key={prediction.id} className="rounded-md bg-mist px-3 py-2 font-bold text-ink/75">{prediction.message}</li>
-          ))}
-        </ul>
-      </Card>
-
-      <Card>
-        <h3 className="text-lg font-black">Suggestions</h3>
-        <div className="mt-3 grid gap-2">
-          {(suggestions.length ? suggestions : [{ id: "none", type: "routine", message: "No routine suggestions right now.", actionLabel: "Not now", createdAt: "" } as Suggestion]).map((suggestion) => (
-            <div key={suggestion.id} className="rounded-md bg-mist p-3">
-              <p className="text-sm font-bold text-ink/75">{suggestion.message}</p>
-              {suggestion.id !== "none" && (
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <PillButton onClick={() => onUpdate((draft) => applySuggestion(draft, suggestion), "suggestion-apply")} className="bg-leaf text-white">{suggestion.actionLabel}</PillButton>
-                  <PillButton onClick={() => onUpdate((draft) => ({ ...draft, suggestionDismissals: [{ id: crypto.randomUUID(), type: suggestion.type, entityId: suggestion.entityId, message: suggestion.message, dismissedAt: new Date().toISOString(), snoozeUntil: new Date(Date.now() + 86_400_000).toISOString() }, ...draft.suggestionDismissals] }), "suggestion-snooze")} className="bg-skycap text-ink">Not now</PillButton>
-                  <PillButton onClick={() => onUpdate((draft) => ({ ...draft, suggestionDismissals: [{ id: crypto.randomUUID(), type: suggestion.type, entityId: suggestion.entityId, message: suggestion.message, dismissedAt: new Date().toISOString() }, ...draft.suggestionDismissals] }), "suggestion-dismiss")} className="bg-white text-ink ring-1 ring-black/10">Don't suggest</PillButton>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {wasteWatch.length > 0 && (
+      {probablyNext && (
         <Card>
-          <h3 className="text-lg font-black">Waste watch</h3>
-          <ul className="mt-3 grid gap-2 text-sm">
-            {wasteWatch.slice(0, 3).map((item) => (
-              <li key={item.itemName} className="rounded-md bg-mist px-3 py-2 font-bold text-ink/75">{item.itemName} — high waste noted {item.count} times</li>
-            ))}
-          </ul>
+          <p className="text-xs font-black uppercase text-leaf">Probably next</p>
+          <h3 className="mt-1 text-xl font-black">{probablyNext.itemName}{probablyNext.location ? ` — ${probablyNext.location}` : ""}</h3>
+          <p className="mt-1 text-sm font-bold text-ink/60">{probablyNext.reason}</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <PillButton onClick={() => quickCapture(probablyNext.message)} className="bg-leaf text-white">Start</PillButton>
+            <PillButton onClick={() => quickCapture(`Done: ${probablyNext.itemName}`)} className="bg-skycap text-ink">Done</PillButton>
+            <PillButton onClick={() => undefined} className="bg-white text-ink ring-1 ring-black/10">Skip</PillButton>
+          </div>
         </Card>
       )}
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <SummaryCard title="Need now" count={needNow.length} items={needNow} />
-        <SummaryCard title="Missing" count={missing.length} items={missing.map((item) => `${item.name} — ${item.quantityNeeded} ${item.unit}`)} />
-        <SummaryCard title="Running low" count={low.length} items={low.map((item) => item.name)} />
-        <SummaryCard title="Reported pending" count={pending.length} items={pending.map((item) => `${item.itemName} — ${item.status}`)} />
-        <SummaryCard title="Expiration watch" count={watch.length} items={watch.map((item) => `${item.itemName} — ${item.status}`)} />
-      </div>
-
-      <Card>
-        <h3 className="text-lg font-black">Copy to chat</h3>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <PillButton onClick={() => onCopy(makeSummary(state, "normal"))} className="bg-ink text-white"><Copy size={16} className="inline" /> Normal</PillButton>
-          <PillButton onClick={() => onCopy(makeSummary(state, "urgent"))} className="bg-tomato text-white">Urgent</PillButton>
-          <PillButton onClick={() => onCopy(makeSummary(state, "missing"))} className="bg-skycap text-ink">Only missing</PillButton>
-          <PillButton onClick={() => onCopy(makeSummary(state, "low"))} className="bg-lime text-ink">Only low</PillButton>
-          <PillButton onClick={() => onCopy(makeSummary(state, "end"))} className="col-span-2 bg-leaf text-white">End of shift</PillButton>
-        </div>
-        {copyNote && <p className="mt-2 text-sm font-bold text-leaf">{copyNote}</p>}
-      </Card>
-
-      <PillButton onClick={openPanic} className="bg-tomato py-4 text-lg text-white">
-        Open Panic Mode
-      </PillButton>
     </div>
   );
 }
-
 function SummaryCard({ title, count, items }: { title: string; count: number; items: string[] }) {
   return (
     <Card>
@@ -538,6 +508,112 @@ function SummaryCard({ title, count, items }: { title: string; count: number; it
       </ul>
     </Card>
   );
+}
+
+function NotebookView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void }) {
+  const [editingId, setEditingId] = useState("");
+  const [editText, setEditText] = useState("");
+  const entries = [...state.capturedEntries].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
+  function startEdit(entry: CapturedEntry) {
+    setEditingId(entry.id);
+    setEditText(entry.rawText);
+  }
+
+  return (
+    <div className="grid gap-4">
+      <Card className="bg-leaf text-white">
+        <h2 className="text-3xl font-black">Notebook</h2>
+        <p className="mt-1 font-bold opacity-90">A running note for this shift.</p>
+      </Card>
+      {entries.length ? entries.map((entry) => (
+        <Card key={entry.id}>
+          <p className="text-xs font-black uppercase text-leaf">{new Date(entry.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
+          {editingId === entry.id ? (
+            <div className="mt-2 grid gap-2">
+              <textarea value={editText} onChange={(event) => setEditText(event.target.value)} className="min-h-24 rounded-lg border border-black/10 px-3 py-3 font-bold" />
+              <PillButton
+                onClick={() => {
+                  onUpdate((draft) => ({
+                    ...draft,
+                    capturedEntries: draft.capturedEntries.map((item) => item.id === entry.id ? { ...item, rawText: editText, updatedAt: new Date().toISOString() } : item),
+                  }), "notebook-edit");
+                  setEditingId("");
+                }}
+                className="bg-leaf text-white"
+              >
+                Save
+              </PillButton>
+            </div>
+          ) : (
+            <>
+              <p className="mt-2 text-lg font-bold">{entry.rawText}</p>
+              <p className="mt-2 text-xs font-bold text-ink/55">{entry.inferredTypes.join(", ")}{entry.location ? ` • ${entry.location}` : ""}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <PillButton onClick={() => startEdit(entry)} className="bg-skycap text-ink">Edit</PillButton>
+                <PillButton onClick={() => onUpdate((draft) => ({ ...draft, capturedEntries: draft.capturedEntries.filter((item) => item.id !== entry.id) }), "notebook-delete")} className="bg-white text-tomato ring-1 ring-tomato/30">Delete</PillButton>
+              </div>
+            </>
+          )}
+        </Card>
+      )) : (
+        <Card><h3 className="font-black">No notes yet</h3><p className="mt-1 text-sm font-bold text-ink/60">Capture something from Today and it will show here.</p></Card>
+      )}
+    </div>
+  );
+}
+
+function InboxView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void }) {
+  const items = state.capturedEntries.filter((entry) => !entry.confirmed && !entry.dismissed);
+  return (
+    <div className="grid gap-4">
+      <Card className="bg-leaf text-white">
+        <h2 className="text-3xl font-black">Inbox</h2>
+        <p className="mt-1 font-bold opacity-90">Confirm what the app organized.</p>
+      </Card>
+      {items.length ? items.map((entry) => (
+        <Card key={entry.id}>
+          <p className="text-lg font-black">{entry.rawText}</p>
+          <p className="mt-2 text-sm font-bold text-ink/60">Detected as: {entry.inferredTypes.filter((type) => type !== "note").join(" / ") || "note"}{entry.itemName ? ` • ${entry.itemName}` : ""}{entry.location ? ` • ${entry.location}` : ""}</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <PillButton onClick={() => onUpdate((draft) => confirmCapturedEntry(draft, entry.id), "inbox-confirm")} className="bg-leaf text-white">Confirm</PillButton>
+            <PillButton onClick={() => onUpdate((draft) => ({ ...draft, capturedEntries: draft.capturedEntries.map((item) => item.id === entry.id ? { ...item, confirmed: false } : item) }), "inbox-edit")} className="bg-skycap text-ink">Edit</PillButton>
+            <PillButton onClick={() => onUpdate((draft) => dismissCapturedEntry(draft, entry.id), "inbox-dismiss")} className="bg-white text-ink ring-1 ring-black/10">Dismiss</PillButton>
+          </div>
+        </Card>
+      )) : (
+        <Card><h3 className="font-black">Inbox clear</h3><p className="mt-1 text-sm font-bold text-ink/60">Captured notes that need action will land here.</p></Card>
+      )}
+    </div>
+  );
+}
+
+function HistoryView({ state, onUpdate, onCopy, copyNote }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void; onCopy: (text: string) => void; copyNote: string }) {
+  const [tab, setTab] = useState("need");
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <h2 className="text-2xl font-black">History</h2>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          {["need", "inventory", "panic", "reminders", "reports", "waste", "insights", "stats"].map((option) => (
+            <PillButton key={option} onClick={() => setTab(option)} className={tab === option ? "bg-leaf text-white" : "bg-white text-ink ring-1 ring-black/10"}>{option}</PillButton>
+          ))}
+        </div>
+      </Card>
+      {tab === "need" && <NeedNowView state={state} onUpdate={onUpdate} />}
+      {tab === "inventory" && <InventoryView state={state} onUpdate={onUpdate} />}
+      {tab === "panic" && <PanicView state={state} onUpdate={onUpdate} onCopy={onCopy} />}
+      {tab === "reminders" && <RemindersView state={state} onUpdate={onUpdate} />}
+      {tab === "reports" && <ReportsView state={state} onUpdate={onUpdate} />}
+      {tab === "waste" && <WasteView state={state} onUpdate={onUpdate} />}
+      {tab === "insights" && <InsightsView state={state} onUpdate={onUpdate} onCopy={onCopy} copyNote={copyNote} />}
+      {tab === "stats" && <StatsView state={state} onUpdate={onUpdate} />}
+    </div>
+  );
+}
+
+function SettingsView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void }) {
+  return <ShiftSettingsPanel state={state} onUpdate={onUpdate} onClose={() => undefined} />;
 }
 
 function ShiftSettingsPanel({
@@ -723,7 +799,7 @@ function NeedNowView({
     <div className="grid gap-4">
       <Card className="bg-leaf text-white">
         <h2 className="text-3xl font-black">Need Now</h2>
-        <p className="mt-1 font-bold opacity-90">Today’s active needs, separate from the inventory catalog.</p>
+        <p className="mt-1 font-bold opacity-90">Todayâ€™s active needs, separate from the inventory catalog.</p>
       </Card>
       <Card>
         <h3 className="text-lg font-black">Add need for today</h3>
@@ -798,7 +874,7 @@ function NeedNowView({
             <div className="grid grid-cols-[1fr_auto] items-center gap-3">
               <div>
                 <h3 className="text-lg font-black">{need.name}</h3>
-                <p className="text-sm font-bold text-ink/60">{need.quantity} {need.unit} • {need.location} • {need.source}</p>
+                <p className="text-sm font-bold text-ink/60">{need.quantity} {need.unit} â€¢ {need.location} â€¢ {need.source}</p>
               </div>
               <PillButton onClick={() => clearNeed(need)} className="bg-leaf text-white">Done</PillButton>
             </div>
@@ -839,7 +915,7 @@ function ChecklistEditor({
       <div className="flex items-center justify-between gap-2">
         <button onClick={() => setExpanded(!expanded)} className="tap text-left">
           <h3 className="text-lg font-black">Opening checklist</h3>
-          <p className="text-xs font-bold text-ink/55">{expanded ? "Tap to collapse" : "Tap to expand"} • {getReadiness(state.checklist)}% complete</p>
+          <p className="text-xs font-bold text-ink/55">{expanded ? "Tap to collapse" : "Tap to expand"} â€¢ {getReadiness(state.checklist)}% complete</p>
         </button>
         <div className="flex gap-2">
           <PillButton onClick={() => setExpanded(!expanded)} className="bg-white text-ink ring-1 ring-black/10">{expanded ? "Hide" : "Show"}</PillButton>
@@ -1093,7 +1169,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           <div className="mt-3 rounded-lg border border-leaf/20 bg-lime/70 p-3">
             <p className="text-xs font-black uppercase text-ink/50">Suggested</p>
             <h4 className="text-lg font-black">{ocrSuggestion.cleanName}</h4>
-            <p className="text-sm font-bold text-ink/65">Category: {ocrSuggestion.category} • Unit: {ocrSuggestion.unit} • Confidence {Math.round(ocrSuggestion.confidence * 100)}%</p>
+            <p className="text-sm font-bold text-ink/65">Category: {ocrSuggestion.category} â€¢ Unit: {ocrSuggestion.unit} â€¢ Confidence {Math.round(ocrSuggestion.confidence * 100)}%</p>
             {ocrSuggestion.duplicateName && <p className="mt-1 text-sm font-bold text-ink/65">Possible match: {ocrSuggestion.duplicateName}</p>}
             <div className="mt-3 grid grid-cols-3 gap-2">
               <PillButton onClick={() => useOcrSuggestion(ocrSuggestion)} className="bg-leaf text-white">Use</PillButton>
@@ -1174,7 +1250,7 @@ function InventoryView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-black">{item.name}</h3>
-                <p className="text-sm font-bold text-ink/60">{item.status} • {item.location} • {item.unit}</p>
+                <p className="text-sm font-bold text-ink/60">{item.status} â€¢ {item.location} â€¢ {item.unit}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {item.imageUrl && <img src={item.imageUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}
@@ -1336,7 +1412,7 @@ function RemindersView({ state, onUpdate }: { state: ShiftState; onUpdate: (muta
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="font-black">{reminder.title}</h3>
-              <p className="text-sm font-bold text-ink/60">{reminder.location} at {reminder.time} • {reminder.repeat}</p>
+              <p className="text-sm font-bold text-ink/60">{reminder.location} at {reminder.time} â€¢ {reminder.repeat}</p>
             </div>
             <PillButton onClick={() => onUpdate((draft) => ({ ...draft, reminders: draft.reminders.map((entry) => entry.id === reminder.id ? { ...entry, doneToday: !entry.doneToday } : entry) }), "reminder-done")} className={reminder.doneToday ? "bg-leaf text-white" : "bg-skycap text-ink"}>
               {reminder.doneToday ? "Done" : "Mark"}
@@ -1365,7 +1441,7 @@ function ReportsView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutato
       {reports.map((report) => (
         <Card key={report.id}>
           <h3 className="text-lg font-black">{report.itemName}</h3>
-          <p className="text-sm font-bold text-ink/60">Reported {new Date(report.reportedAt).toLocaleString()} • {report.method}</p>
+          <p className="text-sm font-bold text-ink/60">Reported {new Date(report.reportedAt).toLocaleString()} â€¢ {report.method}</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {["pending", "ordered", "restocked", "no action"].map((status) => (
               <PillButton key={status} onClick={() => onUpdate((draft) => ({ ...draft, reports: draft.reports.map((entry) => entry.id === report.id ? { ...entry, status: status as ReportedItem["status"], followUpNeeded: status === "pending" } : entry) }), "report-status")} className={report.status === status ? "bg-leaf text-white" : "bg-mist text-ink"}>
@@ -1427,10 +1503,10 @@ function WasteView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator:
       </Card>
       <div className="grid gap-3 md:grid-cols-2">
         {state.expirations.map((batch) => (
-          <Card key={batch.id}><h3 className="font-black">{batch.itemName}</h3><p className="text-sm font-bold text-ink/60">{batch.estimate} • {batch.status}</p></Card>
+          <Card key={batch.id}><h3 className="font-black">{batch.itemName}</h3><p className="text-sm font-bold text-ink/60">{batch.estimate} â€¢ {batch.status}</p></Card>
         ))}
         {state.waste.map((entry) => (
-          <Card key={entry.id}><h3 className="font-black">{entry.itemName}</h3><p className="text-sm font-bold text-ink/60">{entry.packagingCount} • {entry.rating} • {entry.trashType}</p></Card>
+          <Card key={entry.id}><h3 className="font-black">{entry.itemName}</h3><p className="text-sm font-bold text-ink/60">{entry.packagingCount} â€¢ {entry.rating} â€¢ {entry.trashType}</p></Card>
         ))}
       </div>
     </div>
@@ -1499,9 +1575,9 @@ function InsightsView({
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <SummaryCard title="Most missing" count={insights.mostMissing.length} items={insights.mostMissing.map((item) => `${item.name} — ${item.count}`)} />
-        <SummaryCard title="Most low stock" count={insights.mostLowStock.length} items={insights.mostLowStock.map((item) => `${item.name} — ${item.count}`)} />
-        <SummaryCard title="Most reported" count={insights.mostReported.length} items={insights.mostReported.map((item) => `${item.name} — ${item.count}`)} />
+        <SummaryCard title="Most missing" count={insights.mostMissing.length} items={insights.mostMissing.map((item) => `${item.name} â€” ${item.count}`)} />
+        <SummaryCard title="Most low stock" count={insights.mostLowStock.length} items={insights.mostLowStock.map((item) => `${item.name} â€” ${item.count}`)} />
+        <SummaryCard title="Most reported" count={insights.mostReported.length} items={insights.mostReported.map((item) => `${item.name} â€” ${item.count}`)} />
         <SummaryCard title="Pending 2+ days" count={insights.pendingReports.length} items={insights.pendingReports.map((item) => item.itemName)} />
       </div>
 
@@ -1553,7 +1629,7 @@ function StatsView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator:
     <div className="grid gap-4">
       <Card>
         <h2 className="text-2xl font-black">Stats</h2>
-        <p className="mt-1 text-sm font-bold text-ink/60">XP {state.xp + readiness} • Weekly improvement starts after a few shifts.</p>
+        <p className="mt-1 text-sm font-bold text-ink/60">XP {state.xp + readiness} â€¢ Weekly improvement starts after a few shifts.</p>
       </Card>
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Readiness" value={`${readiness}%`} />

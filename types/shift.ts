@@ -1,8 +1,10 @@
-export type NavKey = "today" | "needNow" | "inventory" | "panic" | "reminders" | "reports" | "waste" | "insights" | "stats";
+export type NavKey = "today" | "notebook" | "checklist" | "inbox" | "history" | "settings";
 
 export type ItemCategory = "dairy" | "drinks" | "snacks" | "coffee" | "paper goods" | "cleaning" | "other";
 export type Unit = "each" | "case" | "bag" | "box" | "tray" | "container";
 export type ItemStatus = "stocked" | "running low" | "missing" | "reported" | "restocked";
+export type CapturedEntryType = "note" | "task" | "inventory" | "reminder" | "waste" | "maintenance" | "report" | "urgent";
+export type CaptureUrgency = "normal" | "soon" | "urgent";
 
 export interface ChecklistItem {
   id: string;
@@ -98,6 +100,21 @@ export interface FloorRun {
   notes?: string;
 }
 
+export interface CapturedEntry {
+  id: string;
+  rawText: string;
+  inferredTypes: CapturedEntryType[];
+  location?: string;
+  itemName?: string;
+  dueText?: string;
+  urgency: CaptureUrgency;
+  completed: boolean;
+  confirmed: boolean;
+  dismissed: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Prediction {
   id: string;
   itemName: string;
@@ -170,6 +187,7 @@ export interface ShiftState {
   expirations: ExpirationBatch[];
   waste: WasteObservation[];
   floorRuns: FloorRun[];
+  capturedEntries: CapturedEntry[];
   smartPromptSkips: string[];
   suggestionDismissals: SuggestionDismissal[];
   predictions: Prediction[];

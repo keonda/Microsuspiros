@@ -38,6 +38,7 @@ export function createDefaultState(): ShiftState {
     expirations: [],
     waste: [],
     floorRuns: [],
+    capturedEntries: [],
     smartPromptSkips: [],
     suggestionDismissals: [],
     predictions: [],

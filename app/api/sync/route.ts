@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { mergeNeedNow } from "@/lib/sync-merge";
+import { mergeShiftSnapshots } from "@/lib/sync-merge";
 import type { ShiftState } from "@/types/shift";
 
 function singleUserEmail() {
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     const existingFullSnapshot = existingSetting?.value as ShiftState | null | undefined;
     const nextSnapshot = existingFullSnapshot
-      ? { ...payload, needNow: mergeNeedNow(payload.needNow ?? [], existingFullSnapshot.needNow ?? []) }
+      ? mergeShiftSnapshots(existingFullSnapshot, payload as ShiftState)
       : payload;
 
     await db.appSetting.upsert({
