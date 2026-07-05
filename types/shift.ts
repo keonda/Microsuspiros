@@ -106,6 +106,7 @@ export interface CapturedEntry {
   inferredTypes: CapturedEntryType[];
   location?: string;
   itemName?: string;
+  imageUrl?: string;
   dueText?: string;
   urgency: CaptureUrgency;
   completed: boolean;

@@ -1,0 +1,1 @@
+ALTER TABLE "CapturedEntry" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;

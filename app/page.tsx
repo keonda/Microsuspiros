@@ -1,7 +1,7 @@
 "use client";
 
 import * as LucideIcons from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CapturedEntry,
   ChecklistItem,
@@ -71,6 +71,23 @@ const nav: Array<{ key: NavKey; label: string; icon: React.ComponentType<{ size?
 ];
 
 const store = new OfflineStore("shift-companion-state");
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+}
 
 export default function ShiftCompanion() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -398,22 +415,99 @@ function TodayView({
   openPanic: () => void;
 }) {
   const [text, setText] = useState("");
+  const [captureStatus, setCaptureStatus] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const unfinishedChecklist = state.checklist.filter((item) => !item.done);
   const inboxCount = state.capturedEntries.filter((entry) => !entry.deleted && !entry.confirmed && !entry.dismissed).length;
   const activeNeeds = state.needNow.filter((item) => !item.done).length + state.items.filter((item) => item.status === "missing" || item.status === "running low" || item.status === "reported").length;
   const probablyNext = useMemo(() => predictShortagesWithRules(state, new Date())[0], [state]);
   const nextChecklist = unfinishedChecklist.find((item) => /coffee|cup|milk/i.test(item.title)) ?? unfinishedChecklist[0];
 
+  useEffect(() => {
+    return () => recognitionRef.current?.stop();
+  }, []);
+
   function capture() {
     if (!text.trim()) return;
     const entry = createCapturedEntry(text);
     onUpdate((draft) => applyCapturedEntry(draft, entry), "capture-entry");
     setText("");
+    setCaptureStatus("Captured.");
   }
 
-  function quickCapture(value: string) {
-    const entry = createCapturedEntry(value);
+  function quickCapture(value: string, imageUrl?: string) {
+    const entry = { ...createCapturedEntry(value), imageUrl };
     onUpdate((draft) => applyCapturedEntry(draft, entry), "capture-entry");
+    setCaptureStatus(imageUrl ? "Photo captured." : "Captured.");
+  }
+
+  function focusTyping() {
+    textRef.current?.focus();
+    setCaptureStatus("Ready to type.");
+  }
+
+  function startSpeechCapture() {
+    if (typeof window === "undefined") return;
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      textRef.current?.focus();
+      setCaptureStatus("Speech capture is not supported here. Type it instead.");
+      return;
+    }
+
+    recognitionRef.current?.stop();
+    const recognition = new Recognition();
+    recognitionRef.current = recognition;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      if (transcript) {
+        setText((current) => `${current}${current.trim() ? " " : ""}${transcript}`);
+        setCaptureStatus("Voice added. Tap Capture to save.");
+      }
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      setCaptureStatus("Could not hear that. Try again or type it.");
+    };
+    recognition.onend = () => setIsListening(false);
+    setIsListening(true);
+    setCaptureStatus("Listening...");
+    recognition.start();
+  }
+
+  async function capturePhoto(file?: File) {
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    setCaptureStatus("Uploading photo...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/uploads", { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok || !result.url) throw new Error(result.error ?? "Photo upload failed.");
+      const note = text.trim() || `Photo note captured: ${file.name}`;
+      quickCapture(note, result.url);
+      setText("");
+    } catch (error) {
+      setCaptureStatus(error instanceof Error ? error.message : "Photo upload failed.");
+    } finally {
+      setIsUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
   }
 
   return (
@@ -432,16 +526,26 @@ function TodayView({
       <Card>
         <label className="text-xs font-black uppercase text-leaf">What happened?</label>
         <textarea
+          ref={textRef}
           value={text}
           onChange={(event) => setText(event.target.value)}
           placeholder="Floor 6 almost out of coffee"
           className="mt-2 min-h-36 w-full resize-none rounded-lg border border-black/10 px-4 py-4 text-lg font-bold outline-none focus:ring-2 focus:ring-leaf/40"
         />
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(event) => capturePhoto(event.target.files?.[0])}
+        />
         <div className="mt-3 grid grid-cols-3 gap-2">
-          <PillButton onClick={() => undefined} className="bg-skycap text-ink">Type</PillButton>
-          <PillButton onClick={() => quickCapture("Voice note: ")} className="bg-skycap text-ink">Speak</PillButton>
-          <PillButton onClick={() => quickCapture("Photo note captured")} className="bg-skycap text-ink">Photo</PillButton>
+          <PillButton onClick={focusTyping} className="bg-skycap text-ink">Type</PillButton>
+          <PillButton onClick={startSpeechCapture} className="bg-skycap text-ink">{isListening ? "Listening" : "Speak"}</PillButton>
+          <PillButton onClick={() => photoInputRef.current?.click()} disabled={isUploadingPhoto} className="bg-skycap text-ink disabled:opacity-60">{isUploadingPhoto ? "Uploading" : "Photo"}</PillButton>
         </div>
+        {captureStatus && <p className="mt-2 text-sm font-bold text-ink/60">{captureStatus}</p>}
         <PillButton onClick={capture} className="mt-3 w-full bg-ink py-4 text-lg text-white">Capture</PillButton>
       </Card>
 
@@ -548,6 +652,7 @@ function NotebookView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutat
           ) : (
             <>
               <p className="mt-2 text-lg font-bold">{entry.rawText}</p>
+              {entry.imageUrl && <img src={entry.imageUrl} alt="" className="mt-3 max-h-64 w-full rounded-lg object-cover" />}
               <p className="mt-2 text-xs font-bold text-ink/55">{entry.inferredTypes.join(", ")}{entry.location ? ` • ${entry.location}` : ""}</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <PillButton onClick={() => startEdit(entry)} className="bg-skycap text-ink">Edit</PillButton>
@@ -574,6 +679,7 @@ function InboxView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator:
       {items.length ? items.map((entry) => (
         <Card key={entry.id}>
           <p className="text-lg font-black">{entry.rawText}</p>
+          {entry.imageUrl && <img src={entry.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded-lg object-cover" />}
           <p className="mt-2 text-sm font-bold text-ink/60">Detected as: {entry.inferredTypes.filter((type) => type !== "note").join(" / ") || "note"}{entry.itemName ? ` • ${entry.itemName}` : ""}{entry.location ? ` • ${entry.location}` : ""}</p>
           <div className="mt-3 grid grid-cols-3 gap-2">
             <PillButton onClick={() => onUpdate((draft) => confirmCapturedEntry(draft, entry.id), "inbox-confirm")} className="bg-leaf text-white">Confirm</PillButton>

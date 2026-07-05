@@ -361,6 +361,7 @@ model CapturedEntry {
   inferredTypes String[]
   location      String?
   itemName      String?
+  imageUrl      String?
   dueText       String?
   urgency       String   @default("normal")
   completed     Boolean  @default(false)
