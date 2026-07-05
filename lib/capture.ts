@@ -43,6 +43,7 @@ export function createCapturedEntry(rawText: string, now = new Date()): Captured
     ...classification,
     confirmed: false,
     dismissed: false,
+    deleted: false,
     createdAt: now.toISOString(),
   };
 }
@@ -93,6 +94,15 @@ export function dismissCapturedEntry(state: ShiftState, id: string): ShiftState 
   return {
     ...state,
     capturedEntries: state.capturedEntries.map((entry) => entry.id === id ? { ...entry, dismissed: true, updatedAt: new Date().toISOString() } : entry),
+  };
+}
+
+export function deleteCapturedEntry(state: ShiftState, id: string): ShiftState {
+  return {
+    ...state,
+    capturedEntries: state.capturedEntries.map((entry) =>
+      entry.id === id ? { ...entry, deleted: true, dismissed: true, updatedAt: new Date().toISOString() } : entry
+    ),
   };
 }
 

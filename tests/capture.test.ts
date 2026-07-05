@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyCapturedEntry, classifyCapturedEntry, completeChecklistFromCapture, createCapturedEntry, queueOfflineCapture, shouldShowSyncProblem } from "../lib/capture";
+import { applyCapturedEntry, classifyCapturedEntry, completeChecklistFromCapture, createCapturedEntry, deleteCapturedEntry, queueOfflineCapture, shouldShowSyncProblem } from "../lib/capture";
 import { createDefaultState } from "../lib/shift-logic";
 
 test("capturing creates a raw note", () => {
@@ -46,4 +46,11 @@ test("sync problem UI only shows for offline or failed sync", () => {
   assert.equal(shouldShowSyncProblem("Sync pending", true), false);
   assert.equal(shouldShowSyncProblem("Sync failed", true), true);
   assert.equal(shouldShowSyncProblem("Synced", false), true);
+});
+
+test("deleting a captured entry creates a sync tombstone", () => {
+  const state = applyCapturedEntry(createDefaultState(), createCapturedEntry("Photo note captured"));
+  const next = deleteCapturedEntry(state, state.capturedEntries[0].id);
+  assert.equal(next.capturedEntries[0].deleted, true);
+  assert.equal(next.capturedEntries[0].dismissed, true);
 });

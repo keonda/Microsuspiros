@@ -28,7 +28,7 @@ import {
 } from "@/lib/shift-logic";
 import { OfflineStore, SyncStatus } from "@/lib/offline-store";
 import { mergeShiftSnapshots } from "@/lib/sync-merge";
-import { applyCapturedEntry, confirmCapturedEntry, createCapturedEntry, dismissCapturedEntry, shouldShowSyncProblem } from "@/lib/capture";
+import { applyCapturedEntry, confirmCapturedEntry, createCapturedEntry, deleteCapturedEntry, dismissCapturedEntry, shouldShowSyncProblem } from "@/lib/capture";
 import {
   applySuggestion,
   cleanOcrWithRules,
@@ -260,7 +260,7 @@ function normalizeState(saved: ShiftState): ShiftState {
     ...defaults,
     ...saved,
     needNow: saved.needNow ?? [],
-    capturedEntries: saved.capturedEntries ?? [],
+    capturedEntries: (saved.capturedEntries ?? []).map((entry) => ({ ...entry, deleted: entry.deleted ?? false })),
     suggestionDismissals: saved.suggestionDismissals ?? [],
     predictions: saved.predictions ?? [],
     insights: saved.insights,
@@ -399,7 +399,7 @@ function TodayView({
 }) {
   const [text, setText] = useState("");
   const unfinishedChecklist = state.checklist.filter((item) => !item.done);
-  const inboxCount = state.capturedEntries.filter((entry) => !entry.confirmed && !entry.dismissed).length;
+  const inboxCount = state.capturedEntries.filter((entry) => !entry.deleted && !entry.confirmed && !entry.dismissed).length;
   const activeNeeds = state.needNow.filter((item) => !item.done).length + state.items.filter((item) => item.status === "missing" || item.status === "running low" || item.status === "reported").length;
   const probablyNext = useMemo(() => predictShortagesWithRules(state, new Date())[0], [state]);
   const nextChecklist = unfinishedChecklist.find((item) => /coffee|cup|milk/i.test(item.title)) ?? unfinishedChecklist[0];
@@ -513,7 +513,7 @@ function SummaryCard({ title, count, items }: { title: string; count: number; it
 function NotebookView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void }) {
   const [editingId, setEditingId] = useState("");
   const [editText, setEditText] = useState("");
-  const entries = [...state.capturedEntries].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const entries = state.capturedEntries.filter((entry) => !entry.deleted).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
   function startEdit(entry: CapturedEntry) {
     setEditingId(entry.id);
@@ -551,7 +551,7 @@ function NotebookView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutat
               <p className="mt-2 text-xs font-bold text-ink/55">{entry.inferredTypes.join(", ")}{entry.location ? ` • ${entry.location}` : ""}</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <PillButton onClick={() => startEdit(entry)} className="bg-skycap text-ink">Edit</PillButton>
-                <PillButton onClick={() => onUpdate((draft) => ({ ...draft, capturedEntries: draft.capturedEntries.filter((item) => item.id !== entry.id) }), "notebook-delete")} className="bg-white text-tomato ring-1 ring-tomato/30">Delete</PillButton>
+                <PillButton onClick={() => onUpdate((draft) => deleteCapturedEntry(draft, entry.id), "notebook-delete")} className="bg-white text-tomato ring-1 ring-tomato/30">Delete</PillButton>
               </div>
             </>
           )}
@@ -564,7 +564,7 @@ function NotebookView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutat
 }
 
 function InboxView({ state, onUpdate }: { state: ShiftState; onUpdate: (mutator: (draft: ShiftState) => ShiftState, action?: string) => void }) {
-  const items = state.capturedEntries.filter((entry) => !entry.confirmed && !entry.dismissed);
+  const items = state.capturedEntries.filter((entry) => !entry.deleted && !entry.confirmed && !entry.dismissed);
   return (
     <div className="grid gap-4">
       <Card className="bg-leaf text-white">

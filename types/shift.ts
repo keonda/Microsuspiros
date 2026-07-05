@@ -111,6 +111,7 @@ export interface CapturedEntry {
   completed: boolean;
   confirmed: boolean;
   dismissed: boolean;
+  deleted: boolean;
   createdAt: string;
   updatedAt?: string;
 }
